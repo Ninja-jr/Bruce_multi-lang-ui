@@ -1,0 +1,20 @@
+name: Build Bruce Firmware
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Bruce
+      run: |
+        pip3 install platformio
+        pio run -e lilygo-t-embed-cc1101
+        pio run -e m5stack-cores3
+        
+    - uses: actions/upload-artifact@v4
+      with:
+        name: bruce-firmware
+        path: .pio/build/*/firmware.bin
