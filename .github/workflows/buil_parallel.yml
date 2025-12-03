@@ -1,12 +1,11 @@
----
 name: Build and Push Releases
 
 on:
   push:
     branches:
-      - main, workflow
-    tags:
-      - "*"
+      - main
+      - dev
+      - workflow
   workflow_dispatch:
 
 jobs:
@@ -67,8 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - id: build
-        name: setup Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -77,231 +75,71 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-v20251203-final # <-- CACHE BUST APPLIED
+          restore-keys: ${{ runner.os }}-pip-
 
       - name: Install dependencies
-        run: |
-          pip install requests esptool intelhex
+        run: pip install requests esptool intelhex
 
       - name: Cache PlatformIO
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.platformio
-          key: Bruce-platformio-${{ hashFiles('**/platformio.ini') }}
+          path: ~/.platformio
+          key: Bruce-platformio-${{ hashFiles('**/platformio.ini') }}-v20251203-final # <-- CACHE BUST APPLIED
           restore-keys: Bruce-platformio-
-
-      - name: Restore PIO
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ github.workspace }}/.pio
-          key: Bruce-pio-${{ matrix.board.env }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            Bruce-pio-${{ matrix.board.env }}-
 
       - name: Install PlatformIO Core
         run: |
           pip install platformio
+          sed -i "s/-DBRUCE_VERSION=.*/-DBRUCE_VERSION='\"Ninja-Jr\"'/" platformio.ini
 
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            version=${{ github.ref_name }}
-          else
-            version="${GITHUB_SHA::7}"
-          fi
+      - name: Build
+        run: platformio run -e ${{ matrix.board.env }}
 
-          sed -i "s/-DBRUCE_VERSION=/-DBRUCE_VERSION='\"$version\"' ; /g" ./platformio.ini
-          sed -i "s/-DGIT_COMMIT_HASH='\"Homebrew\"'/\!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"'\$\(git describe --always --dirty)'\\\\\\\\\"'/g" ./platformio.ini
-
-          cat ./platformio.ini
-
-      - name: Run Compile
-        run: |
-          platformio run -e ${{ matrix.board.env }}
-
-      - name: Cache PIO
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ github.workspace }}/.pio
-          key: Bruce-pio-${{ matrix.board.env }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Merge files
-        run: |
-          # pio run -e ${{ matrix.board.env }} -t build-firmware
-          # Files are merged after build
-
-      - name: Upload ${{ matrix.board.env }}
+      - name: Upload compiled bin
         uses: actions/upload-artifact@v4
         with:
           name: Bruce-${{ matrix.board.env }}
-          path: Bruce-*.*
+          path: Bruce-*.bin
           retention-days: 5
-          if-no-files-found: error
 
-  post_compile_steps:
-    name: Update Placeholders
-    runs-on: ubuntu-latest
-    environment: github_release
+  release:
     needs: compile_sketch
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') || github.ref_type == 'tag'
+    runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
+      - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
-          pattern: '*'
+          pattern: Bruce-*
           merge-multiple: true
-          path: artifacts
 
-      - name: Ensure releases exist and get IDs
-        id: get_release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const ensureByTag = async (tag, prerelease=true) => {
-              try {
-                const { data } = await github.rest.repos.getReleaseByTag({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  tag
-                });
-                return data.id;
-              } catch (e) {
-                if (e.status !== 404) throw e;
-                const { data } = await github.rest.repos.createRelease({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  tag_name: tag,
-                  name: tag,
-                  prerelease
-                });
-                return data.id;
-              }
-            };
-
-            const betaId = await ensureByTag('betaRelease');
-            const lastId = await ensureByTag('lastRelease');
-
-            core.setOutput('beta', String(betaId));
-            core.setOutput('last', String(lastId));
-
-      - name: Get current sha
-        id: get_sha
+      - name: Prepare final Ninja-Jr files
         run: |
-          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          mkdir -p release_bins
+          for f in Bruce-*.bin; do
+            [ -f "$f" ] || continue
+            newname=$(echo "$f" | sed 's/Bruce-\(.*\)\.bin$/Bruce_\1_Ninja-Jr.bin/')
+            cp "$f" "release_bins/$newname"
+          done
+          ls -la release_bins/
 
       - name: Delete old betaRelease assets
+        continue-on-error: true
         uses: actions/github-script@v6
         with:
           script: |
-            const release_id = ${{ steps.get_release.outputs.beta }};
-            const assets = await github.rest.repos.listReleaseAssets({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: release_id
-            });
-            for (const asset of assets.data) {
-              await github.rest.repos.deleteReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                asset_id: asset.id
-              });
-            }
+            try {
+              const rel = await github.rest.repos.getReleaseByTag({owner: context.repo.owner, repo: context.repo.repo, tag: "betaRelease"});
+              for (const a of rel.data.assets) {
+                await github.rest.repos.deleteReleaseAsset({owner: context.repo.owner, repo: context.repo.repo, asset_id: a.id});
+              }
+            } catch (e) {}
 
-      - name: Upload new betaRelease asset
+      - name: Upload Ninja-Jr builds
         uses: softprops/action-gh-release@v2
         with:
-          name: betaRelease commit (${{ steps.get_sha.outputs.GITHUB_SHA_SHORT }})
           tag_name: betaRelease
+          name: betaRelease – Ninja-Jr builds
           prerelease: true
-          files: artifacts/**
           fail_on_unmatched_files: false
-          make_latest: false
-          generate_release_notes: false
-
-      - name: Delete old lastRelease assets
-        uses: actions/github-script@v6
-        if: github.ref_type == 'tag'
-        with:
-          script: |
-            const release_id = ${{ steps.get_release.outputs.last }};
-            const assets = await github.rest.repos.listReleaseAssets({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: release_id
-            });
-            for (const asset of assets.data) {
-              await github.rest.repos.deleteReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                asset_id: asset.id
-              });
-            }
-
-      - name: Upload new lastRelease asset
-        uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
-        with:
-          name: lastRelease commit (${{ steps.get_sha.outputs.GITHUB_SHA_SHORT }})
-          tag_name: lastRelease
-          prerelease: true
-          files: artifacts/**
-          fail_on_unmatched_files: false
-          make_latest: false
-          generate_release_notes: false
-
-      - name: Checkout main to trigger WebPage deploy
-        if: ${{ success() }}
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
-
-      - name: Trigger WebPage deploy (workflow_dispatch)
-        if: ${{ success() }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow list
-          gh workflow run .github/workflows/deploy.yml --ref WebPage
-
-  create_release:
-    runs-on: ubuntu-latest
-    environment: github_release
-    needs: [compile_sketch]
-    if: github.ref_type == 'tag'
-    steps:
-      - id: bruce_version
-        name: Get Version
-        run: |
-          set -x
-
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            version=${{ github.ref_name }}
-          else
-            version="${GITHUB_SHA::7}"
-          fi
-
-          echo "version=${version}" > $GITHUB_OUTPUT
-      - uses: actions/download-artifact@v4
-        with:
-          merge-multiple: true
-
-      - name: List all files
-        if: always()
-        run: |
-          set -x
-          pwd
-          ls -all
-          tree
-
-      - name: Create Release ${{ steps.bruce_version.outputs.version }}
-        uses: softprops/action-gh-release@v1
-        with:
-          name: Bruce Release ${{ steps.bruce_version.outputs.version }}
-          tag_name: ${{ steps.bruce_version.outputs.version }}
-          generate_release_notes: true
-          files: |
-            Bruce-*.bin
+          files: release_bins/Bruce_*_Ninja-Jr.bin
