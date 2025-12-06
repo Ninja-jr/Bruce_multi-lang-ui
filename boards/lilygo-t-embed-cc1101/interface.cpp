@@ -151,6 +151,8 @@ void InputHandler(void) {
     static unsigned long tm2 = millis(); // delay between Select and encoder (avoid missclick)
     static unsigned long lastSelPressTime = 0; // Track last SelPress time for double-press
     static bool waitingForDoublePress = false; // Flag for double-press detection
+    static bool selButtonPressed = false; // Track if button is currently held
+    static unsigned long selPressStartTime = 0; // When button was first pressed
     static int posDifference = 0;
     static int lastPos = 0;
     bool sel = !BTN_ACT;
@@ -189,8 +191,11 @@ void InputHandler(void) {
         tm2 = millis();
     }
 
-    // Handle encoder middle button with double-press detection
-    if (sel == BTN_ACT && millis() - tm2 > 200) {
+    // Handle encoder middle button press/release
+    if (sel == BTN_ACT && !selButtonPressed && millis() - tm2 > 200) {
+        // Button just pressed
+        selButtonPressed = true;
+        selPressStartTime = millis();
         unsigned long currentTime = millis();
         
         if (waitingForDoublePress && (currentTime - lastSelPressTime < 500)) {
@@ -206,6 +211,15 @@ void InputHandler(void) {
         
         posDifference = 0;
         tm = millis();
+    } 
+    else if (sel != BTN_ACT && selButtonPressed) {
+        // Button just released
+        selButtonPressed = false;
+        
+        // Check for long press (held for >700ms)
+        if (millis() - selPressStartTime > 700) {
+            LongPress = true;
+        }
     }
     
     // Check if single press timeout has expired
@@ -225,6 +239,7 @@ void InputHandler(void) {
         // Reset encoder double-press tracking
         waitingForDoublePress = false;
         lastSelPressTime = 0;
+        selButtonPressed = false;
     }
 }
 
