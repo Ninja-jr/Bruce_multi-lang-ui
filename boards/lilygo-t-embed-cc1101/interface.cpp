@@ -149,15 +149,8 @@ void _setBrightness(uint8_t brightval) {
 void InputHandler(void) {
     static unsigned long tm = millis();  // debounce for buttons
     static unsigned long tm2 = millis(); // delay between Select and encoder (avoid missclick)
-    static enum {
-        IDLE,
-        FIRST_PRESS,
-        FIRST_RELEASE,
-        SECOND_PRESS,
-        LONG_PRESS
-    } encoderState = IDLE;
-    static unsigned long pressStartTime = 0;
-    static unsigned long firstPressTime = 0;
+    static unsigned long lastSelPressTime = 0; // Track last SelPress time for double-press
+    static bool waitingForDoublePress = false; // Flag for double-press detection
     static int posDifference = 0;
     static int lastPos = 0;
     bool sel = !BTN_ACT;
@@ -196,62 +189,31 @@ void InputHandler(void) {
         tm2 = millis();
     }
 
-    // State machine for encoder middle button
-    switch (encoderState) {
-        case IDLE:
-            if (sel == BTN_ACT && millis() - tm2 > 200) {
-                // Button pressed - start timing
-                encoderState = FIRST_PRESS;
-                pressStartTime = millis();
-                firstPressTime = pressStartTime;
-                posDifference = 0;
-                tm = millis();
-            }
-            break;
-            
-        case FIRST_PRESS:
-            if (sel != BTN_ACT) {
-                // Button released quickly
-                encoderState = FIRST_RELEASE;
-            } else if (millis() - pressStartTime > 700) {
-                // Held for >700ms - long press
-                LongPress = true;
-                encoderState = LONG_PRESS;
-            }
-            break;
-            
-        case FIRST_RELEASE:
-            if (sel == BTN_ACT && millis() - tm2 > 200) {
-                // Second press within double-press window
-                encoderState = SECOND_PRESS;
-                pressStartTime = millis();
-                posDifference = 0;
-                tm = millis();
-            } else if (millis() - firstPressTime >= 600) {
-                // Timeout - single press
-                SelPress = true;
-                encoderState = IDLE;
-            }
-            break;
-            
-        case SECOND_PRESS:
-            if (sel != BTN_ACT) {
-                // Second release - double press complete
-                EscPress = true;
-                encoderState = IDLE;
-            } else if (millis() - pressStartTime > 700) {
-                // Second press held too long - treat as new single press
-                SelPress = true;
-                encoderState = IDLE;
-            }
-            break;
-            
-        case LONG_PRESS:
-            if (sel != BTN_ACT) {
-                // Long press released
-                encoderState = IDLE;
-            }
-            break;
+    // Handle encoder middle button with double-press detection
+    if (sel == BTN_ACT && millis() - tm2 > 200) {
+        unsigned long currentTime = millis();
+        
+        if (waitingForDoublePress && (currentTime - lastSelPressTime < 500)) {
+            // Double press detected within 500ms
+            EscPress = true;
+            waitingForDoublePress = false;
+            lastSelPressTime = 0;
+        } else {
+            // First press - start waiting for potential double press
+            waitingForDoublePress = true;
+            lastSelPressTime = currentTime;
+        }
+        
+        posDifference = 0;
+        tm = millis();
+    }
+    
+    // Check if single press timeout has expired
+    if (waitingForDoublePress && millis() - lastSelPressTime >= 600) {
+        // Timeout reached - it's a single press
+        SelPress = true;
+        waitingForDoublePress = false;
+        lastSelPressTime = 0;
     }
 
     // Handle dedicated back button
@@ -259,8 +221,10 @@ void InputHandler(void) {
         AnyKeyPress = true;
         EscPress = true;
         tm = millis();
-        // Reset encoder state
-        encoderState = IDLE;
+        
+        // Reset encoder double-press tracking
+        waitingForDoublePress = false;
+        lastSelPressTime = 0;
     }
 }
 
