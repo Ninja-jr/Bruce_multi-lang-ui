@@ -219,6 +219,9 @@ void InputHandler(void) {
         // Check for long press (held for >700ms)
         if (millis() - selPressStartTime > 700) {
             LongPress = true;
+        } else if (millis() - selPressStartTime > 500) {
+            // Held for 500-700ms - too long for double press, cancel waiting
+            waitingForDoublePress = false;
         }
     }
     
