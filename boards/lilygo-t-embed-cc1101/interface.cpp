@@ -153,6 +153,7 @@ void InputHandler(void) {
     static bool waitingForDoublePress = false; // Flag for double-press detection
     static bool selButtonPressed = false; // Track if button is currently held
     static unsigned long selPressStartTime = 0; // When button was first pressed
+    static bool longPressTriggered = false; // Prevent multiple long press triggers
     static int posDifference = 0;
     static int lastPos = 0;
     bool sel = !BTN_ACT;
@@ -191,11 +192,12 @@ void InputHandler(void) {
         tm2 = millis();
     }
 
-    // Handle encoder middle button press/release
+    // Handle encoder middle button press
     if (sel == BTN_ACT && !selButtonPressed && millis() - tm2 > 200) {
         // Button just pressed
         selButtonPressed = true;
         selPressStartTime = millis();
+        longPressTriggered = false;
         unsigned long currentTime = millis();
         
         if (waitingForDoublePress && (currentTime - lastSelPressTime < 500)) {
@@ -212,22 +214,31 @@ void InputHandler(void) {
         posDifference = 0;
         tm = millis();
     } 
-    else if (sel != BTN_ACT && selButtonPressed) {
+    
+    // Check for long press while button is held
+    if (selButtonPressed && !longPressTriggered && (millis() - selPressStartTime > 700)) {
+        // Long press detected (>700ms hold)
+        LongPress = true;
+        longPressTriggered = true;
+        // Cancel any pending double-press detection
+        waitingForDoublePress = false;
+    }
+    
+    // Handle button release
+    if (sel != BTN_ACT && selButtonPressed) {
         // Button just released
         selButtonPressed = false;
         
-        // Check for long press (held for >700ms)
-        if (millis() - selPressStartTime > 700) {
-            LongPress = true;
-        } else if (millis() - selPressStartTime > 500) {
-            // Held for 500-700ms - too long for double press, cancel waiting
-            waitingForDoublePress = false;
+        // If not a long press and not part of a double press, check for single press
+        if (!longPressTriggered && !waitingForDoublePress) {
+            // Button was released quickly - single press
+            SelPress = true;
         }
     }
     
-    // Check if single press timeout has expired
+    // Check if single press timeout has expired (for cases where we're waiting for double press)
     if (waitingForDoublePress && millis() - lastSelPressTime >= 600) {
-        // Timeout reached - it's a single press
+        // Timeout reached without second press - it's a single press
         SelPress = true;
         waitingForDoublePress = false;
         lastSelPressTime = 0;
@@ -239,10 +250,11 @@ void InputHandler(void) {
         EscPress = true;
         tm = millis();
         
-        // Reset encoder double-press tracking
+        // Reset encoder tracking
         waitingForDoublePress = false;
         lastSelPressTime = 0;
         selButtonPressed = false;
+        longPressTriggered = false;
     }
 }
 
