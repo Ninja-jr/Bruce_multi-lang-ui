@@ -18,15 +18,25 @@
 #include "modules/wifi/clients.h"
 #include "modules/wifi/deauther.h"
 #include "modules/wifi/scan_hosts.h"
+#if !defined(LITE_VERSION)
+#include "modules/ethernet/ARPoisoner.h"
+#include "modules/ethernet/DHCPStarvation.h"
+#include "modules/ethernet/MACFlooding.h"
+#include <ETH.h>
+#endif
 #include <globals.h>
 #include <sstream>
 void run_arp_scanner() {
-    esp_netif_t *esp_netinterface = esp_netif_get_handle_from_ifkey("ETH_SPI_0");
+#if !defined(LITE_VERSION)
+    // Prefer the Arduino ETH netif, fall back to legacy key-based lookup
+    esp_netif_t *esp_netinterface = ETH.netif();
+    if (esp_netinterface == nullptr) { esp_netinterface = esp_netif_get_handle_from_ifkey("ETH_DEF"); }
     if (esp_netinterface == nullptr) {
         Serial.println("Failed to get netif handle");
         return;
     }
     ARPScanner{esp_netinterface};
+#endif
 }
 
 ARPScanner::ARPScanner(esp_netif_t *_esp_net_interface) {
@@ -116,7 +126,6 @@ void ping_target(ip_addr_t target) {
 }
 
 void ARPScanner::setup() {
-    LOCK_TCPIP_CORE();
     hostslist_eth.clear();
 
     // IPAddress uint32_t op returns number in big-endian
@@ -126,6 +135,12 @@ void ARPScanner::setup() {
 
     if (esp_netif_get_ip_info(esp_net_interface, &ip_info) != ESP_OK) {
         Serial.println("Can't get IP informations");
+        return;
+    }
+
+    if (ip_info.ip.addr == 0 || ip_info.netmask.addr == 0) {
+        Serial.println("Ethernet has no IP/netmask, aborting ARP scan");
+        displayError("Ethernet not ready", true);
         return;
     }
 
@@ -182,6 +197,8 @@ void ARPScanner::setup() {
             readArpTableETH(net_iface);
             tableReadCounter = 0;
         }
+        // Stops search on EscPress
+        if (check(EscPress)) break;
     }
     UNLOCK_TCPIP_CORE();
     auto it = std::find_if(hostslist_eth.begin(), hostslist_eth.end(), [this](const Host &host) {
@@ -217,7 +234,13 @@ ScanHostMenu:
         return;
     }
 
-    options = {};
+    options = {
+#if !defined(LITE_VERSION)
+        {"ARP Poisoning",   [this]() { ARPoisoner{gateway}; }},
+        {"DHCP Starvation", [=]() { DHCPStarvation(); }      },
+        {"MAC Flooding",    [=]() { MACFlooding(); }         },
+#endif
+    };
     for (auto host : hostslist_eth) {
         Serial.println(host.ip.toString());
         String result = host.ip.toString();

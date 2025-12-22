@@ -54,7 +54,7 @@ void getBrightness() {
 **  get/set rotation value
 **********************************************************************/
 int gsetRotation(bool set) {
-    int getRot = bruceConfig.rotation;
+    int getRot = bruceConfigPins.rotation;
     int result = ROTATION;
     int mask = ROTATION > 1 ? -2 : 2;
 
@@ -76,7 +76,7 @@ int gsetRotation(bool set) {
         set = true;
     }
     if (set) {
-        bruceConfig.setRotation(result);
+        bruceConfigPins.setRotation(result);
         tft.setRotation(result);
         tft.setRotation(result); // must repeat, sometimes ESP32S3 miss one SPI command and it just
                                  // jumps this step and don't rotate
@@ -956,7 +956,7 @@ void runClockLoop() {
 int gsetIrTxPin(bool set) {
     int result = bruceConfigPins.irTx;
 
-    if (result > 50) bruceConfigPins.setIrTxPin(LED);
+    if (result > 50) bruceConfigPins.setIrTxPin(TXLED);
     if (set) {
         options.clear();
         std::vector<std::pair<const char *, int>> pins;
@@ -1552,7 +1552,7 @@ void setTheme() {
         bruceConfig.saveFile();
     }
 }
-
+#if !defined(LITE_VERSION)
 BLE_API bleApi;
 static bool ble_api_enabled = false;
 
@@ -1569,3 +1569,4 @@ void enableBLEAPI() {
 
     ble_api_enabled = !ble_api_enabled;
 }
+#endif

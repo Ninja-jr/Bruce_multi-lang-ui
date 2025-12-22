@@ -7,7 +7,7 @@
 
 #ifdef BOARD_HAS_PSRAM
 #ifndef SERIAL_CMDS_TASK_STACK_SIZE
-  #define SERIAL_CMDS_TASK_STACK_SIZE 20000
+  #define SERIAL_CMDS_TASK_STACK_SIZE 8192
 #endif
 #ifndef INTERPRETER_TASK_STACK_SIZE
   #define INTERPRETER_TASK_STACK_SIZE 16384
@@ -16,7 +16,7 @@
   #define INPUT_HANDLER_TASK_STACK_SIZE 4096
 #endif
 #ifndef SSH_TASK_STACK_SIZE
-  #define SSH_TASK_STACK_SIZE 20000
+  #define SSH_TASK_STACK_SIZE 1024*10
 #endif
 #ifndef SAFE_STACK_BUFFER_SIZE
   #define SAFE_STACK_BUFFER_SIZE 4096
@@ -24,7 +24,7 @@
 #else
 // Boards without PSRAM need smaller stack sizes to be able to run properly
 #ifndef SERIAL_CMDS_TASK_STACK_SIZE
-  #define SERIAL_CMDS_TASK_STACK_SIZE 1024*12
+  #define SERIAL_CMDS_TASK_STACK_SIZE 8192
 #endif
 #ifndef INTERPRETER_TASK_STACK_SIZE
   #define INTERPRETER_TASK_STACK_SIZE 16384
@@ -51,10 +51,10 @@
 #ifndef RXLED               // Default RX Infrared LED
   #define RXLED GROVE_SCL
 #endif
-#ifndef LED                 // Default TC Infrared Led
-  #define LED GROVE_SDA
+#ifndef TXLED                 // Default TX Infrared Led
+  #define TXLED GROVE_SDA
 #endif
-#ifndef LED_ON              // Infrared LED On state
+#ifndef LED_ON              // Infrared TXLED On state
   #define LED_ON 1
 #endif
 #ifndef LED_OFF             // Infrared LED Off state
