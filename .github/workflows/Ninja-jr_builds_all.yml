@@ -8,6 +8,11 @@ on:
         required: true
         default: 'dev'
         type: string
+      version_name:
+        description: 'Version name (Ninja-Jr 1.0, Ninja-Jr dev, etc)'
+        required: true
+        default: 'Ninja-Jr dev'
+        type: string
   push:
     branches:
       - dev
@@ -18,6 +23,14 @@ jobs:
   compile_sketch:
     name: Build ${{ matrix.board.env }}
     runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ 
+        github.event_name == 'workflow_dispatch' && github.event.inputs.version_name ||
+        github.ref == 'refs/heads/main' && 'Ninja-Jr 1.0' ||
+        github.ref == 'refs/heads/dev' && 'Ninja-Jr dev' ||
+        github.ref_type == 'tag' && github.ref_name ||
+        'Ninja-Jr'
+      }}
     strategy:
       fail-fast: false
       matrix:
@@ -112,13 +125,12 @@ jobs:
       - name: Install PlatformIO Core
         run: |
           pip install platformio
-          sed -i "s/-DBRUCE_VERSION=\"[^\"]*\"/-DBRUCE_VERSION=\"Ninja-Jr\"/" ./platformio.ini
           GIT_HASH=$(git describe --always --dirty)
           sed -i "s|-DGIT_COMMIT_HASH='\"Homebrew\"'|!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"${GIT_HASH}\\\\\\\\\"'|g" ./platformio.ini
 
       - name: Run Compile
         run: |
-          platformio run -e ${{ matrix.board.env }}
+          platformio run -e ${{ matrix.board.env }} --build-flag="-DBRUCE_VERSION=\"${{ env.VERSION_NAME }}\""
 
       - name: Save PIO Build Cache
         uses: actions/cache/save@v4
