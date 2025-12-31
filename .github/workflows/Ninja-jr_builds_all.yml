@@ -21,55 +21,55 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-       board:
-          - { env: "m5stack-cardputer",               family: "ESP32-S3",}
-          - { env: "m5stack-cplus2",                  family: "ESP32",}
-          - { env: "m5stack-cplus1_1",                family: "ESP32",}
-          - { env: "LAUNCHER_m5stack-cplus1_1",       family: "ESP32",}
-          - { env: "m5stack-core2",                   family: "ESP32",}
-          - { env: "m5stack-core16mb",                family: "ESP32",}
-          - { env: "m5stack-core4mb",                 family: "ESP32",}
-          - { env: "m5stack-cores3",                  family: "ESP32-S3",}
-          - { env: "esp32-s3-devkitc-1",              family: "ESP32-S3",}
-          - { env: "esp32-c5",                        family: "ESP32-C5",}
-          - { env: "esp32-c5-tft",                    family: "ESP32-C5",}
-          - { env: "CYD-2432S028",                    family: "ESP32",}
-          - { env: "CYD-2USB",                        family: "ESP32",}
-          - { env: "CYD-2432W328C",                   family: "ESP32",}
-          - { env: "CYD-2432W328C_2",                 family: "ESP32",}
-          - { env: "CYD-2432W328R-or-S024R",          family: "ESP32",}
-          - { env: "LAUNCHER_CYD-2432W328R-or-S024R", family: "ESP32",}
-          - { env: "LAUNCHER_CYD-2432S028",           family: "ESP32",}
-          - { env: "LAUNCHER_CYD-2USB",               family: "ESP32",}
-          - { env: "LAUNCHER_CYD-2432W328C",          family: "ESP32",}
-          - { env: "lilygo-t-embed-cc1101",           family: "ESP32-S3",}
-          - { env: "lilygo-t-embed",                  family: "ESP32-S3",}
-          - { env: "lilygo-t-deck",                   family: "ESP32-S3",}
-          - { env: "lilygo-t-watch-s3",               family: "ESP32-S3",}
-          - { env: "lilygo-t-deck-pro",               family: "ESP32-S3",}
-          - { env: "lilygo-t-display-s3",             family: "ESP32-S3",}
-          - { env: "lilygo-t-display-s3-touch",       family: "ESP32-S3",}
-          - { env: "lilygo-t-display-s3-mmc",         family: "ESP32-S3",}
-          - { env: "lilygo-t-display-s3-touch-mmc",   family: "ESP32-S3",}
-          - { env: "lilygo-t-display-S3-pro",         family: "ESP32-S3",}
-          - { env: "lilygo-t-display-ttgo",           family: "ESP32",}
-          - { env: "lilygo-t-hmi",                    family: "ESP32-S3",}
-          - { env: "lilygo-t-lora-pager",             family: "ESP32-S3",}
-          - { env: "smoochiee-board",                 family: "ESP32-S3",}
-          - { env: "Phantom_S024R",                   family: "ESP32",}
-          - { env: "LAUNCHER_Phantom_S024R",          family: "ESP32",}
-          - { env: "Marauder-Mini",                   family: "ESP32",}
-          - { env: "LAUNCHER_Marauder-Mini",          family: "ESP32",}
-          - { env: "Awok-Mini",                       family: "ESP32",}
-          - { env: "Marauder-v7",                     family: "ESP32",}
-          - { env: "LAUNCHER_Marauder-v7",            family: "ESP32",}
-          - { env: "Marauder-V4-V6",                  family: "ESP32",}
-          - { env: "Marauder-v61",                    family: "ESP32",}
-          - { env: "LAUNCHER_Marauder-V4-V6",         family: "ESP32",}
-          - { env: "LAUNCHER_Marauder-v61",           family: "ESP32",}
-          - { env: "Awok-Touch",                      family: "ESP32",}
-          - { env: "WaveSentry-R1",                   family: "ESP32",}
-          - { env: "LAUNCHER_WaveSentry-R1",          family: "ESP32",}
+        board:
+          - { env: "m5stack-cardputer", family: "ESP32-S3" }
+          - { env: "m5stack-cplus2", family: "ESP32" }
+          - { env: "m5stack-cplus1_1", family: "ESP32" }
+          - { env: "LAUNCHER_m5stack-cplus1_1", family: "ESP32" }
+          - { env: "m5stack-core2", family: "ESP32" }
+          - { env: "m5stack-core16mb", family: "ESP32" }
+          - { env: "m5stack-core4mb", family: "ESP32" }
+          - { env: "m5stack-cores3", family: "ESP32-S3" }
+          - { env: "esp32-s3-devkitc-1", family: "ESP32-S3" }
+          - { env: "esp32-c5", family: "ESP32-C5" }
+          - { env: "esp32-c5-tft", family: "ESP32-C5" }
+          - { env: "CYD-2432S028", family: "ESP32" }
+          - { env: "CYD-2USB", family: "ESP32" }
+          - { env: "CYD-2432W328C", family: "ESP32" }
+          - { env: "CYD-2432W328C_2", family: "ESP32" }
+          - { env: "CYD-2432W328R-or-S024R", family: "ESP32" }
+          - { env: "LAUNCHER_CYD-2432W328R-or-S024R", family: "ESP32" }
+          - { env: "LAUNCHER_CYD-2432S028", family: "ESP32" }
+          - { env: "LAUNCHER_CYD-2USB", family: "ESP32" }
+          - { env: "LAUNCHER_CYD-2432W328C", family: "ESP32" }
+          - { env: "lilygo-t-embed-cc1101", family: "ESP32-S3" }
+          - { env: "lilygo-t-embed", family: "ESP32-S3" }
+          - { env: "lilygo-t-deck", family: "ESP32-S3" }
+          - { env: "lilygo-t-watch-s3", family: "ESP32-S3" }
+          - { env: "lilygo-t-deck-pro", family: "ESP32-S3" }
+          - { env: "lilygo-t-display-s3", family: "ESP32-S3" }
+          - { env: "lilygo-t-display-s3-touch", family: "ESP32-S3" }
+          - { env: "lilygo-t-display-s3-mmc", family: "ESP32-S3" }
+          - { env: "lilygo-t-display-s3-touch-mmc", family: "ESP32-S3" }
+          - { env: "lilygo-t-display-S3-pro", family: "ESP32-S3" }
+          - { env: "lilygo-t-display-ttgo", family: "ESP32" }
+          - { env: "lilygo-t-hmi", family: "ESP32-S3" }
+          - { env: "lilygo-t-lora-pager", family: "ESP32-S3" }
+          - { env: "smoochiee-board", family: "ESP32-S3" }
+          - { env: "Phantom_S024R", family: "ESP32" }
+          - { env: "LAUNCHER_Phantom_S024R", family: "ESP32" }
+          - { env: "Marauder-Mini", family: "ESP32" }
+          - { env: "LAUNCHER_Marauder-Mini", family: "ESP32" }
+          - { env: "Awok-Mini", family: "ESP32" }
+          - { env: "Marauder-v7", family: "ESP32" }
+          - { env: "LAUNCHER_Marauder-v7", family: "ESP32" }
+          - { env: "Marauder-V4-V6", family: "ESP32" }
+          - { env: "Marauder-v61", family: "ESP32" }
+          - { env: "LAUNCHER_Marauder-V4-V6", family: "ESP32" }
+          - { env: "LAUNCHER_Marauder-v61", family: "ESP32" }
+          - { env: "Awok-Touch", family: "ESP32" }
+          - { env: "WaveSentry-R1", family: "ESP32" }
+          - { env: "LAUNCHER_WaveSentry-R1", family: "ESP32" }
 
     steps:
       - name: Checkout repository
@@ -144,7 +144,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: '*'
+          pattern: 'Bruce-*'
           merge-multiple: true
           path: artifacts
 
@@ -225,7 +225,7 @@ jobs:
           name: betaRelease - Ninja-Jr builds
           tag_name: betaRelease
           prerelease: true
-          files: artifacts/**
+          files: artifacts/Bruce-*.bin
           fail_on_unmatched_files: false
           make_latest: false
           generate_release_notes: false
@@ -257,7 +257,7 @@ jobs:
           name: lastRelease - Ninja-Jr builds
           tag_name: lastRelease
           prerelease: true
-          files: artifacts/**
+          files: artifacts/Bruce-*.bin
           fail_on_unmatched_files: false
           make_latest: false
           generate_release_notes: false
@@ -270,7 +270,9 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: 'Bruce-*'
           merge-multiple: true
+          path: artifacts
 
       - name: Create Release Ninja-Jr
         uses: softprops/action-gh-release@v1
@@ -279,5 +281,4 @@ jobs:
           name: Bruce Release Ninja-Jr
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: |
-            Bruce-*.bin
+          files: artifacts/Bruce-*.bin
