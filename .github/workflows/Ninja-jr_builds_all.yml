@@ -1,4 +1,4 @@
-name: Ninja-Jr Builds
+name: Ninja-Jr Builds (All boards)
 
 on:
   workflow_dispatch:
