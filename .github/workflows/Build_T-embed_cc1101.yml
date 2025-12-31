@@ -62,13 +62,14 @@ jobs:
       - name: Install PlatformIO and configure version
         run: |
           pip install platformio
+          sed -i "s/-DBRUCE_VERSION=\"[^\"]*\"/-DBRUCE_VERSION=\"${{ github.event.inputs.version_name }}\"/" ./platformio.ini
           GIT_HASH=$(git describe --always --dirty)
-          sed -i "s|-DGIT_COMMIT_HASH='\"Homebrew\"'|!echo '-DGIT_COMMIT_HASH=\\\\\"${GIT_HASH}\\\\\"'|g" ./platformio.ini
+          sed -i "s|-DGIT_COMMIT_HASH='\"Homebrew\"'|!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"${GIT_HASH}\\\\\\\\\"'|g" ./platformio.ini
 
       - name: Compile for lilygo-t-embed-cc1101
         run: |
-         platformio run -e ${{ env.BOARD_ENV }} -D "BRUCE_VERSION=\"${{ github.event.inputs.version_name }}\""
-    
+          platformio run -e ${{ env.BOARD_ENV }}
+
       - name: Save PIO Build Cache
         uses: actions/cache/save@v4
         with:
