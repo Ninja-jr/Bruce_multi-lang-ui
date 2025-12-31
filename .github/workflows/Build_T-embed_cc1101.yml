@@ -62,7 +62,7 @@ jobs:
       - name: Install PlatformIO and configure version
         run: |
           pip install platformio
-          sed -i "s/-DBRUCE_VERSION=\"[^\"]*\"/-DBRUCE_VERSION=\"${{ github.event.inputs.version_name }}\"/" ./platformio.ini
+          sed -i "s/-DBRUCE_VERSION=/-DBRUCE_VERSION='\"${{ github.event.inputs.version_name }}\"' ; /g" ./platformio.ini
           GIT_HASH=$(git describe --always --dirty)
           sed -i "s|-DGIT_COMMIT_HASH='\"Homebrew\"'|!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"${GIT_HASH}\\\\\\\\\"'|g" ./platformio.ini
 
