@@ -67,8 +67,8 @@ jobs:
 
       - name: Compile for lilygo-t-embed-cc1101
         run: |
-          platformio run -e ${{ env.BOARD_ENV }} --build-flag="-DBRUCE_VERSION=\"${{ github.event.inputs.version_name }}\""
-
+         platformio run -e ${{ env.BOARD_ENV }} -D "BRUCE_VERSION=\"${{ github.event.inputs.version_name }}\""
+    
       - name: Save PIO Build Cache
         uses: actions/cache/save@v4
         with:
