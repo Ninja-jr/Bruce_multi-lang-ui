@@ -1,0 +1,149 @@
+name: Manual Build (Select Environment)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to build from'
+        required: true
+        default: 'dev'
+        type: string
+      version_name:
+        description: 'Version name (Ninja-Jr 1.0, Ninja-Jr dev, etc)'
+        required: true
+        default: 'Ninja-Jr dev'
+        type: string
+      environment:
+        description: 'Select environment to build'
+        required: true
+        default: 'lilygo-t-embed-cc1101'
+        type: choice
+        options:
+          - "lilygo-t-embed-cc1101"
+          - "lilygo-t-embed"
+          - "lilygo-t-deck"
+          - "lilygo-t-watch-s3"
+          - "lilygo-t-deck-pro"
+          - "lilygo-t-display-s3"
+          - "lilygo-t-display-s3-touch"
+          - "lilygo-t-display-s3-mmc"
+          - "lilygo-t-display-s3-touch-mmc"
+          - "lilygo-t-display-s3-pro"
+          - "lilygo-t-display-ttgo"
+          - "lilygo-t-hmi"
+          - "lilygo-t-lora-pager"
+          - "m5stack-cardputer"
+          - "m5stack-cplus2"
+          - "m5stack-cplus1_1"
+          - "LAUNCHER_m5stack-cplus1_1"
+          - "m5stack-core2"
+          - "m5stack-core16mb"
+          - "m5stack-core4mb"
+          - "m5stack-cores3"
+          - "esp32-s3-devkitc-1"
+          - "esp32-c5"
+          - "esp32-c5-tft"
+          - "CYD-2432S028"
+          - "CYD-2USB"
+          - "CYD-2432W328C"
+          - "CYD-2432W328C_2"
+          - "CYD-2432W328R-or-S024R"
+          - "LAUNCHER_CYD-2432W328R-or-S024R"
+          - "LAUNCHER_CYD-2432S028"
+          - "LAUNCHER_CYD-2USB"
+          - "LAUNCHER_CYD-2432W328C"
+          - "smoochiee-board"
+          - "Phantom_S024R"
+          - "LAUNCHER_Phantom_S024R"
+          - "Marauder-Mini"
+          - "LAUNCHER_Marauder-Mini"
+          - "Awok-Mini"
+          - "Marauder-v7"
+          - "LAUNCHER_Marauder-v7"
+          - "Marauder-V4-V6"
+          - "Marauder-v61"
+          - "LAUNCHER_Marauder-V4-V6"
+          - "LAUNCHER_Marauder-v61"
+          - "Awok-Touch"
+          - "WaveSentry-R1"
+          - "LAUNCHER_WaveSentry-R1"
+
+jobs:
+  compile_selected:
+    name: Build ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ github.event.inputs.version_name }}
+      SELECTED_ENV: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install requests esptool intelhex
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: Bruce-platformio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: Bruce-platformio-
+
+      - name: Restore PIO Build Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/.pio
+          key: Bruce-pio-${{ env.SELECTED_ENV }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            Bruce-pio-${{ env.SELECTED_ENV }}-
+
+      - name: Install PlatformIO Core
+        run: |
+          pip install platformio
+          sed -i "s/-DBRUCE_VERSION=/-DBRUCE_VERSION='\"${{ env.VERSION_NAME }}\"' ; /g" ./platformio.ini
+          GIT_HASH=$(git describe --always --dirty)
+          sed -i "s|-DGIT_COMMIT_HASH='\"Homebrew\"'|!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"${GIT_HASH}\\\\\\\\\"'|g" ./platformio.ini
+
+      - name: Run Compile for selected environment
+        run: |
+          echo "Building environment: ${{ env.SELECTED_ENV }}"
+          platformio run -e "${{ env.SELECTED_ENV }}"
+
+      - name: Save PIO Build Cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.pio
+          key: Bruce-pio-${{ env.SELECTED_ENV }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bruce-${{ env.SELECTED_ENV }}
+          path: Bruce-*.*
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Display Build Info
+        run: |
+          echo "Build completed successfully!"
+          echo "Environment: ${{ env.SELECTED_ENV }}"
+          echo "Version: ${{ env.VERSION_NAME }}"
+          echo "Git Hash: $(git describe --always --dirty)"
+          ls -la Bruce-*.* 2>/dev/null || echo "No Bruce files found"
