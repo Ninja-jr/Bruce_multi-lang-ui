@@ -13,7 +13,9 @@ struct ApplePayload {
 
 void appleSubMenu();
 void startAppleSpam(int payloadIndex);
+void startAppleSpamAll();
 void stopAppleSpam();
+void quickAppleSpam(int payloadIndex);
 bool isAppleSpamRunning();
 const char* getApplePayloadName(int index);
 int getApplePayloadCount();
