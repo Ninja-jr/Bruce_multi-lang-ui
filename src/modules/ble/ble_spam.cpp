@@ -353,6 +353,10 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 }
 
 void executeSpam(EBLEPayloadType type) {
+    if (type == AppleJuice || type == SourApple) {
+        return;
+    }
+    
     uint8_t macAddr[6];
     generateRandomMac(macAddr);
     esp_base_mac_addr_set(macAddr);
@@ -469,10 +473,74 @@ void ibeacon(const char *DeviceName, const char *BEACON_UUID, int ManufacturerId
 }
 
 void aj_adv(int ble_choice) {
-    int mael = 0;
     int count = 0;
     String spamName = "";
     if (ble_choice == 6) { spamName = keyboard("", 10, "Name to spam"); }
+    
+    if (ble_choice == 5) {
+        displayTextLine("Spam All Sequential");
+        padprintln("");
+        padprintln("Press ESC to stop");
+        
+        while (1) {
+            if (check(EscPress)) {
+                returnToMenu = true;
+                break;
+            }
+            
+            int protocol = count % 7;
+            
+            switch(protocol) {
+                case 0:
+                    displayTextLine("Android " + String(count));
+                    executeSpam(Google);
+                    break;
+                case 1:
+                    displayTextLine("Samsung " + String(count));
+                    executeSpam(Samsung);
+                    break;
+                case 2:
+                    displayTextLine("Windows " + String(count));
+                    executeSpam(Microsoft);
+                    break;
+                case 3:
+                    displayTextLine("AppleTV " + String(count));
+                    quickAppleSpam(10);
+                    break;
+                case 4:
+                    displayTextLine("AirPods " + String(count));
+                    quickAppleSpam(0);
+                    break;
+                case 5:
+                    displayTextLine("SourApple " + String(count));
+                    executeSpam(SourApple);
+                    break;
+                case 6:
+                    displayTextLine("AppleJuice " + String(count));
+                    executeSpam(AppleJuice);
+                    break;
+            }
+            
+            count++;
+            
+            if (check(EscPress)) {
+                returnToMenu = true;
+                break;
+            }
+        }
+        
+        BLEDevice::init("");
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        pAdvertising = nullptr;
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+        esp_bt_controller_deinit();
+#else
+        BLEDevice::deinit();
+#endif
+        return;
+    }
+    
     while (1) {
         switch (ble_choice) {
             case 0:
@@ -492,18 +560,6 @@ void aj_adv(int ble_choice) {
             case 4:
                 displayTextLine("Android  (" + String(count) + ")");
                 executeSpam(Google);
-                break;
-            case 5:
-                displayTextLine("Spam All  (" + String(count) + ")");
-                if (mael == 0) executeSpam(Google);
-                if (mael == 1) executeSpam(Samsung);
-                if (mael == 2) executeSpam(Microsoft);
-                if (mael == 3) startAppleSpam(10);
-                if (mael == 4) {
-                    startAppleSpam(0);
-                    mael = 0;
-                }
-                mael++;
                 break;
             case 6:
                 displayTextLine("Spamming " + spamName + "(" + String(count) + ")");
