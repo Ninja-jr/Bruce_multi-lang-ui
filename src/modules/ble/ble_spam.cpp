@@ -353,10 +353,6 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 }
 
 void executeSpam(EBLEPayloadType type) {
-    if (type == AppleJuice || type == SourApple) {
-        return;
-    }
-    
     uint8_t macAddr[6];
     generateRandomMac(macAddr);
     esp_base_mac_addr_set(macAddr);
