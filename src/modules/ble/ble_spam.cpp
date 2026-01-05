@@ -230,7 +230,8 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 #ifdef NIMBLE_V2_PLUS
             AdvData.addData(AdvData_Raw, 7 + name_len);
 #else
-            AdvData.addData(std::string((char *)AdvData_Raw, 7 + name_len));
+            std::vector<uint8_t> dataVector(AdvData_Raw, AdvData_Raw + 7 + name_len);
+            AdvData.addData(dataVector);
 #endif
             break;
         }
@@ -244,7 +245,8 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 #ifdef NIMBLE_V2_PLUS
                 AdvData.addData(packet, 26);
 #else
-                AdvData.addData(std::string((char *)packet, 26));
+                std::vector<uint8_t> dataVector(packet, packet + 26);
+                AdvData.addData(dataVector);
 #endif
             } else if (rand == 1) {
                 uint8_t packet[23] = {0x16, 0xff, 0x4c, 0x00, 0x04, 0x04, 0x2a,
@@ -254,7 +256,8 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 #ifdef NIMBLE_V2_PLUS
                 AdvData.addData(packet, 23);
 #else
-                AdvData.addData(std::string((char *)packet, 23));
+                std::vector<uint8_t> dataVector(packet, packet + 23);
+                AdvData.addData(dataVector);
 #endif
             }
             break;
@@ -278,9 +281,10 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
             packet[i++] = 0x10;
             esp_fill_random(&packet[i], 3);
 #ifdef NIMBLE_V2_PLUS
-            AdvData.addData(packet, 17);
+                AdvData.addData(packet, 17);
 #else
-            AdvData.addData(std::string((char *)packet, 17));
+                std::vector<uint8_t> dataVector(packet, packet + 17);
+                AdvData.addData(dataVector);
 #endif
             break;
         }
@@ -306,7 +310,8 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 #ifdef NIMBLE_V2_PLUS
             AdvData.addData(Samsung_Data, 15);
 #else
-            AdvData.addData(std::string((char *)Samsung_Data, 15));
+            std::vector<uint8_t> dataVector(Samsung_Data, Samsung_Data + 15);
+            AdvData.addData(dataVector);
 #endif
             break;
         }
@@ -331,7 +336,8 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 #ifdef NIMBLE_V2_PLUS
             AdvData.addData(Google_Data, 14);
 #else
-            AdvData.addData(std::string((char *)Google_Data, 14));
+            std::vector<uint8_t> dataVector(Google_Data, Google_Data + 14);
+            AdvData.addData(dataVector);
 #endif
             break;
         }
@@ -348,7 +354,6 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 
 void executeSpam(EBLEPayloadType type) {
     if (type == AppleJuice || type == SourApple) {
-        startAppleSpam(0);
         return;
     }
     
