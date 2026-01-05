@@ -140,7 +140,7 @@ void startAppleSpamAll() {
             break;
         }
         
-        displayTextLine(apple_payloads[apple_index].name + " " + String(millis() / 1000) + "s");
+        displayTextLine(String(apple_payloads[apple_index].name) + " " + String(millis() / 1000) + "s");
         
         uint8_t macAddr[6];
         generateRandomMac(macAddr);
