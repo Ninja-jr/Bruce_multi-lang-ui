@@ -73,7 +73,7 @@ void stopAppleSpam() {
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
     esp_bt_controller_deinit();
 #else
-    BLEDevice::deinit();
+    BLEDevice::deinit(false);
 #endif
     
     current_apple_payload = -1;
@@ -82,11 +82,15 @@ void stopAppleSpam() {
 void quickAppleSpam(int payloadIndex) {
     if (payloadIndex < 0 || payloadIndex >= apple_payload_count) return;
     
-    uint8_t macAddr[6];
-    generateRandomMac(macAddr);
-    esp_base_mac_addr_set(macAddr);
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    esp_bt_controller_deinit();
+#else
+    BLEDevice::deinit(false);
+#endif
+    vTaskDelay(10 / portTICK_PERIOD_MS);
     
     BLEDevice::init("");
+    BLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
     BLEAdvertising* pAdv = BLEDevice::getAdvertising();
     
     BLEAdvertisementData advertisementData = BLEAdvertisementData();
@@ -117,7 +121,7 @@ void quickAppleSpam(int payloadIndex) {
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
     esp_bt_controller_deinit();
 #else
-    BLEDevice::deinit();
+    BLEDevice::deinit(false);
 #endif
 }
 
@@ -142,11 +146,15 @@ void startAppleSpamAll() {
         
         displayTextLine(String(apple_payloads[apple_index].name) + " " + String(millis() / 1000) + "s");
         
-        uint8_t macAddr[6];
-        generateRandomMac(macAddr);
-        esp_base_mac_addr_set(macAddr);
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+        esp_bt_controller_deinit();
+#else
+        BLEDevice::deinit(false);
+#endif
+        vTaskDelay(10 / portTICK_PERIOD_MS);
         
         BLEDevice::init("");
+        BLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
         BLEAdvertising* pAdv = BLEDevice::getAdvertising();
         
         BLEAdvertisementData advertisementData = BLEAdvertisementData();
@@ -177,7 +185,7 @@ void startAppleSpamAll() {
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
         esp_bt_controller_deinit();
 #else
-        BLEDevice::deinit();
+        BLEDevice::deinit(false);
 #endif
         
         apple_index = (apple_index + 1) % apple_payload_count;
@@ -202,14 +210,15 @@ void startAppleSpam(int payloadIndex) {
             break;
         }
         
-        uint8_t macAddr[6];
-        generateRandomMac(macAddr);
-        esp_err_t ret = esp_base_mac_addr_set(macAddr);
-        if (ret != ESP_OK) {
-            Serial.printf("Failed to set MAC: %d\n", ret);
-        }
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+        esp_bt_controller_deinit();
+#else
+        BLEDevice::deinit(false);
+#endif
+        vTaskDelay(10 / portTICK_PERIOD_MS);
         
         BLEDevice::init("");
+        BLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
         
         pAppleAdvertising = BLEDevice::getAdvertising();
         
@@ -245,7 +254,7 @@ void startAppleSpam(int payloadIndex) {
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
         esp_bt_controller_deinit();
 #else
-        BLEDevice::deinit();
+        BLEDevice::deinit(false);
 #endif
         
         displayTextLine(String(apple_payloads[payloadIndex].name) + " " + String(millis() / 1000) + "s");
