@@ -79,8 +79,8 @@ void stopAppleSpam() {
 void quickAppleSpam(int payloadIndex) {
     if (payloadIndex < 0 || payloadIndex >= apple_payload_count) return;
     
-    BLEDevice::init("");
     NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+    BLEDevice::init("");
     
     BLEAdvertising* pAdv = BLEDevice::getAdvertising();
     
@@ -137,8 +137,8 @@ void startAppleSpamAll() {
         
         displayTextLine(String(apple_payloads[apple_index].name) + " " + String(millis() / 1000) + "s");
         
-        BLEDevice::init("");
         NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+        BLEDevice::init("");
         
         BLEAdvertising* pAdv = BLEDevice::getAdvertising();
         
@@ -195,8 +195,8 @@ void startAppleSpam(int payloadIndex) {
             break;
         }
         
-        BLEDevice::init("");
         NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+        BLEDevice::init("");
         
         pAppleAdvertising = BLEDevice::getAdvertising();
         
