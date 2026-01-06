@@ -93,7 +93,7 @@ void quickAppleSpam(int payloadIndex) {
     advertisementData.setFlags(0x06);
     
     uint8_t fullPayload[31];
-    fullPayload[0] = apple_payloads[payloadIndex].length + 5;
+    fullPayload[0] = apple_payloads[payloadIndex].length + 1;
     fullPayload[1] = 0xFF;
     memcpy(&fullPayload[2], apple_payloads[payloadIndex].data, apple_payloads[payloadIndex].length);
     
@@ -153,7 +153,7 @@ void startAppleSpamAll() {
         advertisementData.setFlags(0x06);
         
         uint8_t fullPayload[31];
-        fullPayload[0] = apple_payloads[apple_index].length + 5;
+        fullPayload[0] = apple_payloads[apple_index].length + 1;
         fullPayload[1] = 0xFF;
         memcpy(&fullPayload[2], apple_payloads[apple_index].data, apple_payloads[apple_index].length);
         
@@ -217,7 +217,7 @@ void startAppleSpam(int payloadIndex) {
         advertisementData.setFlags(0x06);
         
         uint8_t fullPayload[31];
-        fullPayload[0] = apple_payloads[payloadIndex].length + 5;
+        fullPayload[0] = apple_payloads[payloadIndex].length + 1;
         fullPayload[1] = 0xFF;
         memcpy(&fullPayload[2], apple_payloads[payloadIndex].data, apple_payloads[payloadIndex].length);
         
