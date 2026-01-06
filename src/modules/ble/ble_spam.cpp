@@ -215,11 +215,9 @@ void executeSpam(EBLEPayloadType type) {
     }
 
     BLEDevice::init("");
-    
-    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM, true);
-    
+    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+
     vTaskDelay(5 / portTICK_PERIOD_MS);
-    
     esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, MAX_TX_POWER);
 
     pAdvertising = BLEDevice::getAdvertising();
@@ -247,7 +245,7 @@ void executeSpam(EBLEPayloadType type) {
 
 void executeCustomSpam(String spamName) {
     BLEDevice::init("");
-    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM, true);  // Aggressive — switch to false if unstable
+    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
 
     vTaskDelay(5 / portTICK_PERIOD_MS);
 
@@ -276,7 +274,7 @@ void executeCustomSpam(String spamName) {
 
 void ibeacon(const char *DeviceName, const char *BEACON_UUID, int ManufacturerId) {
     BLEDevice::init(DeviceName);
-    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM, true);  // Aggressive — switch if needed
+    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
 
     vTaskDelay(5 / portTICK_PERIOD_MS);
     esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, MAX_TX_POWER);
@@ -426,8 +424,8 @@ void aj_adv(int ble_choice) {
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
-    esp_bt_controller_deinit();
+        esp_bt_controller_deinit();
 #else
-    BLEDevice::deinit();
+        BLEDevice::deinit();
 #endif
 }
