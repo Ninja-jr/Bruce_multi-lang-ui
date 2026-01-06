@@ -355,7 +355,11 @@ void executeSpam(EBLEPayloadType type) {
         return;
     }
     
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    esp_bt_controller_deinit();
+#else
     BLEDevice::deinit(false);
+#endif
     vTaskDelay(10 / portTICK_PERIOD_MS);
     
     BLEDevice::init("");
@@ -379,11 +383,19 @@ void executeSpam(EBLEPayloadType type) {
     pAdvertising->stop();
     vTaskDelay(5 / portTICK_PERIOD_MS);
     
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    esp_bt_controller_deinit();
+#else
     BLEDevice::deinit(false);
+#endif
 }
 
 void executeCustomSpam(String spamName) {
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    esp_bt_controller_deinit();
+#else
     BLEDevice::deinit(false);
+#endif
     vTaskDelay(10 / portTICK_PERIOD_MS);
     
     BLEDevice::init("sh4rk");
@@ -412,7 +424,11 @@ void executeCustomSpam(String spamName) {
     pAdvertising->stop();
     vTaskDelay(10 / portTICK_PERIOD_MS);
     
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    esp_bt_controller_deinit();
+#else
     BLEDevice::deinit(false);
+#endif
 }
 
 void ibeacon(const char *DeviceName, const char *BEACON_UUID, int ManufacturerId) {
@@ -458,7 +474,11 @@ void ibeacon(const char *DeviceName, const char *BEACON_UUID, int ManufacturerId
         Serial.println("Advertizing stop");
     }
 
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    esp_bt_controller_deinit();
+#else
     BLEDevice::deinit(false);
+#endif
 }
 
 void aj_adv(int ble_choice) {
@@ -518,7 +538,11 @@ void aj_adv(int ble_choice) {
             }
         }
         
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+        esp_bt_controller_deinit();
+#else
         BLEDevice::deinit(false);
+#endif
         return;
     }
     
@@ -554,5 +578,9 @@ void aj_adv(int ble_choice) {
         }
     }
 
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    esp_bt_controller_deinit();
+#else
     BLEDevice::deinit(false);
+#endif
 }
