@@ -214,8 +214,8 @@ void executeSpam(EBLEPayloadType type) {
         return;
     }
 
-    BLEDevice::init("");
     NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+    BLEDevice::init("");
 
     vTaskDelay(5 / portTICK_PERIOD_MS);
     esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, MAX_TX_POWER);
@@ -244,8 +244,8 @@ void executeSpam(EBLEPayloadType type) {
 }
 
 void executeCustomSpam(String spamName) {
-    BLEDevice::init("");
     NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+    BLEDevice::init("");
 
     vTaskDelay(5 / portTICK_PERIOD_MS);
 
@@ -273,8 +273,8 @@ void executeCustomSpam(String spamName) {
 }
 
 void ibeacon(const char *DeviceName, const char *BEACON_UUID, int ManufacturerId) {
-    BLEDevice::init(DeviceName);
     NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+    BLEDevice::init(DeviceName);
 
     vTaskDelay(5 / portTICK_PERIOD_MS);
     esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, MAX_TX_POWER);
@@ -373,6 +373,7 @@ void aj_adv(int ble_choice) {
             }
         }
 
+        NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
         BLEDevice::init("");
         vTaskDelay(100 / portTICK_PERIOD_MS);
         pAdvertising = nullptr;
@@ -418,6 +419,7 @@ void aj_adv(int ble_choice) {
         }
     }
 
+    NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
     BLEDevice::init("");
     vTaskDelay(100 / portTICK_PERIOD_MS);
     pAdvertising = nullptr;
