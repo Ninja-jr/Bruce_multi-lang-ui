@@ -17,15 +17,18 @@ jobs:
         with:
           token: ${{ secrets.SYNC_PAT }}
           fetch-depth: 0
+          submodules: false
 
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Add upstream remote
         run: |
           git remote add upstream https://github.com/PR3Y/Bruce.git 2>/dev/null || git remote set-url upstream https://github.com/PR3Y/Bruce.git
           git fetch upstream --tags --prune
+
       - name: Sync dev and main branches
         run: |
           sync_branch() {
