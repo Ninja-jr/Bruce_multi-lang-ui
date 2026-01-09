@@ -144,9 +144,7 @@ void createDirRecursive(String path, FS fs) {
     }
 }
 
-void handleUpload(
-    AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final
-) {
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
     if (checkUserWebAuth(request)) {
         if (uploadFolder == "/") uploadFolder = "";
         if (!index) {
@@ -234,10 +232,7 @@ String color565ToWebHex(uint16_t color565) {
 void serveWebUIFile(AsyncWebServerRequest *request, String filename, const char *contentType) {
     serveWebUIFile(request, filename, contentType, false, nullptr, 0);
 }
-void serveWebUIFile(
-    AsyncWebServerRequest *request, String filename, const char *contentType, bool gzip,
-    const uint8_t *originaFile, uint32_t originalFileSize
-) {
+void serveWebUIFile(AsyncWebServerRequest *request, String filename, const char *contentType, bool gzip, const uint8_t *originaFile, uint32_t originalFileSize) {
     AsyncWebServerResponse *response = nullptr;
     FS *fs = NULL;
     if (setupSdCard()) {
@@ -619,7 +614,6 @@ h1 {
         
         forceScreenLogging = true;
         tft.setLogging(true);
-        drawMainBorder(true);
         
         const char* navigator_html = R"=====(
 <!DOCTYPE html>
@@ -666,79 +660,54 @@ body { margin:0; background:#000; color:#0f0; font-family:monospace; }
     <button class="nav-btn" data-cmd="nav down">↓</button>
     <div></div>
     <button class="nav-btn small-btn" data-cmd="nav esc">Back</button>
-    <button class="nav-btn small-btn" data-cmd="nav menu" style="order:2;">Menu</button>
+    <button class="nav-btn small-btn" data-cmd="nav menu">Menu</button>
     <div></div>
 </div>
 <div class="nav-menu">
     <button class="menu-btn" onclick="refreshScreen()">🔄 Refresh</button>
-    <button class="menu-btn" onclick="forceRedraw()">🖼️ Force Redraw</button>
-    <button class="menu-btn" onclick="toggleAutoRefresh()">⏱️ Auto: <span id="autoRefreshStatus">Off</span></button>
 </div>
-<div class="status" id="status">Status: Loading...</div>
+<div class="status" id="status">Ready</div>
 <script>
 const canvas = document.getElementById('display');
 const ctx = canvas.getContext('2d');
-let autoRefreshInterval = null;
-let autoRefreshEnabled = false;
+let isBusy = false;
 
 async function sendCommand(cmd) {
+    if (isBusy) return;
+    isBusy = true;
     try {
         const form = new FormData();
         form.append('cmnd', cmd);
-        const response = await fetch('/cm', { method: 'POST', body: form });
-        if (!response.ok) throw new Error(`Command failed: ${response.status}`);
-        document.getElementById('status').textContent = `Status: Sent "${cmd}"`;
-        setTimeout(updateScreen, 200);
-    } catch (error) {
-        console.error('Command failed:', error);
-        document.getElementById('status').textContent = `Status: Error - ${error.message}`;
+        await fetch('/cm', { method: 'POST', body: form });
+        document.getElementById('status').textContent = `Sent: ${cmd}`;
+        await new Promise(r => setTimeout(r, 200));
+        await updateScreen();
+    } catch(e) {
+        document.getElementById('status').textContent = `Error: ${e.message}`;
+    } finally {
+        isBusy = false;
     }
 }
 
 async function updateScreen() {
+    if (isBusy) return;
+    isBusy = true;
     try {
-        document.getElementById('status').textContent = 'Status: Updating...';
-        await fetch('/forceredraw');
-        const response = await fetch('/getscreen', { headers: { 'Cache-Control': 'no-cache' } });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const response = await fetch('/getscreen');
         const buffer = await response.arrayBuffer();
-        if (buffer.byteLength === 0) {
-            drawPlaceholder("No screen data");
-            return;
-        }
         renderTFT(new Uint8Array(buffer));
-        document.getElementById('status').textContent = 'Status: Updated';
-    } catch (error) {
-        console.error('Screen update failed:', error);
-        drawError(error.message);
-        document.getElementById('status').textContent = `Status: Error - ${error.message}`;
+        document.getElementById('status').textContent = 'Updated';
+    } catch(e) {
+        console.error(e);
+        drawPlaceholder();
+        document.getElementById('status').textContent = 'Error updating';
+    } finally {
+        isBusy = false;
     }
-}
-
-async function forceRedraw() {
-    document.getElementById('status').textContent = 'Status: Forcing redraw...';
-    await sendCommand('nav menu');
-    setTimeout(async () => {
-        await sendCommand('nav esc');
-        setTimeout(updateScreen, 500);
-    }, 300);
 }
 
 function refreshScreen() {
     updateScreen();
-}
-
-function toggleAutoRefresh() {
-    autoRefreshEnabled = !autoRefreshEnabled;
-    const status = document.getElementById('autoRefreshStatus');
-    if (autoRefreshEnabled) {
-        status.textContent = '2s';
-        autoRefreshInterval = setInterval(updateScreen, 2000);
-    } else {
-        status.textContent = 'Off';
-        clearInterval(autoRefreshInterval);
-        autoRefreshInterval = null;
-    }
 }
 
 function color565toCSS(color565) {
@@ -750,15 +719,15 @@ function color565toCSS(color565) {
 
 function renderTFT(data) {
     if (!data || data.length === 0) {
-        drawPlaceholder("No data");
+        drawPlaceholder();
         return;
     }
     let offset = 0;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     while (offset < data.length) {
         if (data[offset] !== 0xAA) {
-            console.warn('Invalid packet at offset', offset);
-            break;
+            offset++;
+            continue;
         }
         if (offset + 2 >= data.length) break;
         const size = data[offset + 1];
@@ -823,12 +792,6 @@ function processCommand(fn, data) {
             const fg = readShort();
             const bg = readShort();
             const text = readString(data.length - idx);
-            ctx.fillStyle = color565toCSS(bg);
-            const fw = size === 3 ? 13.5 : size === 2 ? 9 : 4.5;
-            let offset = 0;
-            if (fn === 15) offset = text.length * fw;
-            if (fn === 14) offset = text.length * fw / 2;
-            ctx.fillRect(x3 - offset, y3, text.length * fw, size * 8);
             ctx.fillStyle = color565toCSS(fg);
             ctx.font = `${size * 8}px monospace`;
             ctx.textBaseline = 'top';
@@ -840,43 +803,19 @@ function processCommand(fn, data) {
     }
 }
 
-function drawError(message) {
+function drawPlaceholder() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#f00';
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('Screen Update Failed', canvas.width/2, canvas.height/2 - 20);
-    ctx.fillText(message.substring(0, 40), canvas.width/2, canvas.height/2);
-    ctx.fillText('Try refreshing manually', canvas.width/2, canvas.height/2 + 20);
-}
-
-function drawPlaceholder(message) {
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, '#111');
-    gradient.addColorStop(1, '#222');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#0f0';
-    ctx.font = 'bold 48px monospace';
+    ctx.font = 'bold 24px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('🦈', canvas.width/2, canvas.height/2 - 40);
-    ctx.font = '16px monospace';
-    ctx.fillText('BRUCE NAVIGATOR', canvas.width/2, canvas.height/2);
-    ctx.font = '12px monospace';
-    ctx.fillText(message, canvas.width/2, canvas.height/2 + 25);
-    ctx.fillText('Navigate to refresh', canvas.width/2, canvas.height/2 + 45);
+    ctx.fillText('BRUCE NAVIGATOR', canvas.width/2, canvas.height/2 - 10);
+    ctx.font = '14px monospace';
+    ctx.fillText('Press a button to start', canvas.width/2, canvas.height/2 + 20);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
     updateScreen();
-    setTimeout(() => {
-        sendCommand('nav menu');
-        setTimeout(() => {
-            sendCommand('nav esc');
-            setTimeout(updateScreen, 500);
-        }, 300);
-    }, 1000);
 });
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -890,19 +829,12 @@ document.addEventListener('keydown', (e) => {
         'ArrowUp': 'nav up', 'ArrowDown': 'nav down',
         'ArrowLeft': 'nav prev', 'ArrowRight': 'nav next',
         'Enter': 'nav sel', 'Escape': 'nav esc',
-        'Backspace': 'nav esc', 'm': 'nav menu', 'M': 'nav menu'
+        'Backspace': 'nav esc', ' ': 'nav sel',
+        'm': 'nav menu', 'M': 'nav menu'
     };
     if (keyMap[e.key]) {
         e.preventDefault();
         sendCommand(keyMap[e.key]);
-    }
-    if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
-        refreshScreen();
-    }
-    if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault();
-        forceRedraw();
     }
 });
 </script>
@@ -980,60 +912,6 @@ document.addEventListener('keydown', (e) => {
         }
     });
 
-    server->on("/forceredraw", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (checkUserWebAuth(request)) {
-            drawMainBorder(true);
-            drawStatusBar();
-            request->send(200, "text/plain", "Screen redrawn");
-        }
-    });
-
-    server->on("/screenstatus", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (checkUserWebAuth(request)) {
-            String status = "Screen logging: ";
-            status += tft.getLogging() ? "active" : "inactive";
-            status += "\nHeap: ";
-            status += String(esp_get_free_heap_size());
-            status += "\nWebUI active: ";
-            status += isWebUIActive ? "yes" : "no";
-            status += "\nForce logging: ";
-            status += forceScreenLogging ? "yes" : "no";
-            request->send(200, "text/plain", status);
-        }
-    });
-
-    server->on("/systeminfo", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (checkUserWebAuth(request)) {
-            char response_body[300];
-            MOUNT_SD_CARD;
-            uint64_t LittleFSTotalBytes = LittleFS.totalBytes();
-            uint64_t LittleFSUsedBytes = LittleFS.usedBytes();
-            uint64_t SDTotalBytes = SD.totalBytes();
-            uint64_t SDUsedBytes = SD.usedBytes();
-            UNMOUNT_SD_CARD;
-            sprintf(
-                response_body,
-                "{\"%s\":\"%s\",\"SD\":{\"%s\":\"%s\",\"%s\":\"%s\",\"%s\":\"%s\"},"
-                "\"LittleFS\":{\"%s\":\"%s\",\"%s\":\"%s\",\"%s\":\"%s\"}}",
-                "BRUCE_VERSION",
-                BRUCE_VERSION,
-                "free",
-                humanReadableSize(SDTotalBytes - SDUsedBytes).c_str(),
-                "used",
-                humanReadableSize(SDUsedBytes).c_str(),
-                "total",
-                humanReadableSize(SDTotalBytes).c_str(),
-                "free",
-                humanReadableSize(LittleFSTotalBytes - LittleFSUsedBytes).c_str(),
-                "used",
-                humanReadableSize(LittleFSUsedBytes).c_str(),
-                "total",
-                humanReadableSize(LittleFSTotalBytes).c_str()
-            );
-            request->send(200, "application/json", response_body);
-        }
-    });
-
     server->on("/getscreen", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (checkUserWebAuth(request)) {
             static uint8_t *screenBinBuffer = nullptr;
@@ -1087,19 +965,11 @@ document.addEventListener('keydown', (e) => {
         if (request->hasArg("cmnd")) {
             String cmnd = request->arg("cmnd");
             
-            if (cmnd == "refresh screen" || cmnd == "redraw") {
-                drawMainBorder(true);
-                request->send(200, "text/plain", "Screen refreshed");
-                return;
-            }
-            
             if (cmnd.startsWith("nav")) {
                 if (cmnd.startsWith("nav menu")) {
                     returnToMenu = true;
                     AnyKeyPress = true;
                     SerialCmdPress = true;
-                    drawMainBorder(true);
-                    drawStatusBar();
                     request->send(200, "text/plain", "command " + cmnd + " success");
                     return;
                 }
@@ -1115,17 +985,9 @@ document.addEventListener('keydown', (e) => {
                 else if (cmnd.startsWith("nav prevpage")) var = &PrevPagePress;
                 
                 request->send(200, "text/plain", "command " + cmnd + " success");
-                int time;
-                if (cmnd.endsWith("0")) time = cmnd.substring(cmnd.lastIndexOf(' ')).toInt();
-                else time = 10;
-                auto tmp = millis() + time;
-                while (tmp > millis()) {
-                    AnyKeyPress = true;
-                    SerialCmdPress = true;
-                    *var = true;
-                    if (!LongPress) vTaskDelay(pdMS_TO_TICKS(190));
-                    else vTaskDelay(pdMS_TO_TICKS(50));
-                }
+                *var = true;
+                AnyKeyPress = true;
+                SerialCmdPress = true;
             } else {
                 MOUNT_SD_CARD;
                 if (parseSerialCommand(cmnd, false)) {
