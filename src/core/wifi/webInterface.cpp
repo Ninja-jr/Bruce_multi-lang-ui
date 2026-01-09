@@ -630,40 +630,29 @@ h1 {
 <title>Bruce Navigator</title>
 <style>
 body { margin:0; background:#000; color:#0f0; font-family:monospace; }
-.header { background:#111; padding:10px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #0f0; flex-wrap:wrap; }
-.header-left { font-size:18px; }
-.header-right { display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; }
-.screen-container { position:relative; padding:20px; text-align:center; }
+.header { background:#111; padding:10px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #0f0; }
+.screen { padding:20px; text-align:center; }
 #display { border:1px solid #0f0; max-width:100%; background:#000; }
-#status-overlay { position:absolute; top:20px; left:20px; right:20px; height:20px; color:#0f0; font-size:12px; display:flex; justify-content:space-between; }
-#menu-icons { position:absolute; top:40px; left:20px; display:flex; flex-direction:column; gap:5px; }
 .controls { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; padding:20px; }
 .nav-btn { background:#111; border:1px solid #0f0; color:#0f0; padding:20px; font-size:18px; cursor:pointer; transition:all 0.2s; }
 .nav-btn:hover { background:#0f0; color:#000; }
 .small-btn { padding:12px; font-size:14px; }
 .ok-btn { border-radius:50%; }
-.nav-menu { display:flex; gap:10px; padding:10px 20px; background:#111; border-top:1px solid #0f0; flex-wrap:wrap; }
+.nav-menu { display:flex; gap:10px; padding:10px 20px; background:#111; border-top:1px solid #0f0; }
 .menu-btn { background:#111; border:1px solid #0f0; color:#0f0; padding:8px 12px; cursor:pointer; text-decoration:none; font-size:13px; }
 .menu-btn:hover { background:#0f0; color:#000; }
-.status-bar { padding:5px 10px; background:#111; border-top:1px solid #0f0; font-size:12px; color:#888; }
-.icon-img { width:32px; height:32px; image-rendering:pixelated; }
+.status { padding:5px 10px; background:#111; border-top:1px solid #0f0; font-size:12px; color:#888; }
 </style>
 </head>
 <body>
 <div class="header">
-    <div class="header-left">🦈 Bruce Navigator</div>
-    <div class="header-right">
+    <div>🦈 Bruce Navigator</div>
+    <div>
         <a href="/" class="menu-btn">Switch</a>
         <a href="/logout" class="menu-btn">Logout</a>
     </div>
 </div>
-<div class="screen-container">
-    <div id="status-overlay">
-        <span id="time">--:--</span>
-        <span id="battery">100%</span>
-        <span id="wifi-status">WiFi: --</span>
-    </div>
-    <div id="menu-icons"></div>
+<div class="screen">
     <canvas id="display" width="320" height="240"></canvas>
 </div>
 <div class="controls">
@@ -684,16 +673,13 @@ body { margin:0; background:#000; color:#0f0; font-family:monospace; }
     <button class="menu-btn" onclick="refreshScreen()">🔄 Refresh</button>
     <button class="menu-btn" onclick="forceRedraw()">🖼️ Force Redraw</button>
     <button class="menu-btn" onclick="toggleAutoRefresh()">⏱️ Auto: <span id="autoRefreshStatus">Off</span></button>
-    <button class="menu-btn" onclick="loadThemeIcons()">🎨 Load Icons</button>
 </div>
-<div class="status-bar" id="status">Status: Loading...</div>
+<div class="status" id="status">Status: Loading...</div>
 <script>
 const canvas = document.getElementById('display');
 const ctx = canvas.getContext('2d');
 let autoRefreshInterval = null;
 let autoRefreshEnabled = false;
-let currentTheme = null;
-let menuIcons = {};
 
 async function sendCommand(cmd) {
     try {
@@ -712,100 +698,30 @@ async function sendCommand(cmd) {
 async function updateScreen() {
     try {
         document.getElementById('status').textContent = 'Status: Updating...';
-        
         await fetch('/forceredraw');
-        
-        const screenResponse = await fetch('/getscreen', {
-            method: 'GET',
-            headers: { 'Cache-Control': 'no-cache' }
-        });
-        
-        if (!screenResponse.ok) throw new Error(`Screen: HTTP ${screenResponse.status}`);
-        
-        const buffer = await screenResponse.arrayBuffer();
+        const response = await fetch('/getscreen', { headers: { 'Cache-Control': 'no-cache' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const buffer = await response.arrayBuffer();
         if (buffer.byteLength === 0) {
             drawPlaceholder("No screen data");
             return;
         }
-        
         renderTFT(new Uint8Array(buffer));
-        
-        await updateStatus();
-        
         document.getElementById('status').textContent = 'Status: Updated';
     } catch (error) {
-        console.error('Update failed:', error);
+        console.error('Screen update failed:', error);
         drawError(error.message);
         document.getElementById('status').textContent = `Status: Error - ${error.message}`;
     }
 }
 
-async function updateStatus() {
-    try {
-        const response = await fetch('/statusdata');
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        
-        if (data.time) {
-            document.getElementById('time').textContent = data.time;
-        }
-        
-        let batteryText = `${data.battery || 100}%`;
-        if (data.charging) batteryText += " ⚡";
-        document.getElementById('battery').textContent = batteryText;
-        
-        let wifiText = "WiFi: ";
-        if (data.wifi) {
-            wifiText += data.ssid ? data.ssid.substring(0, 10) : "Connected";
-        } else {
-            wifiText += "Off";
-        }
-        document.getElementById('wifi-status').textContent = wifiText;
-        
-    } catch (error) {
-        console.error('Status update failed:', error);
-    }
-}
-
-async function loadThemeIcons() {
-    try {
-        document.getElementById('status').textContent = 'Status: Loading theme...';
-        
-        const themeResponse = await fetch('/themeinfo');
-        if (!themeResponse.ok) return;
-        
-        const themeData = await themeResponse.json();
-        currentTheme = themeData;
-        
-        if (themeData.currentMenu) {
-            const iconResponse = await fetch(`/menuicon?menu=${encodeURIComponent(themeData.currentMenu)}`);
-            if (iconResponse.ok) {
-                const blob = await iconResponse.blob();
-                const img = new Image();
-                img.onload = () => {
-                    const iconContainer = document.getElementById('menu-icons');
-                    iconContainer.innerHTML = '';
-                    const imgElem = document.createElement('img');
-                    imgElem.src = img.src;
-                    imgElem.className = 'icon-img';
-                    imgElem.title = themeData.currentMenu;
-                    iconContainer.appendChild(imgElem);
-                };
-                img.src = URL.createObjectURL(blob);
-            }
-        }
-        
-        document.getElementById('status').textContent = 'Status: Theme loaded';
-    } catch (error) {
-        console.error('Theme load failed:', error);
-    }
-}
-
 async function forceRedraw() {
     document.getElementById('status').textContent = 'Status: Forcing redraw...';
-    await fetch('/forceredraw');
-    setTimeout(updateScreen, 300);
+    await sendCommand('nav menu');
+    setTimeout(async () => {
+        await sendCommand('nav esc');
+        setTimeout(updateScreen, 500);
+    }, 300);
 }
 
 function refreshScreen() {
@@ -837,22 +753,17 @@ function renderTFT(data) {
         drawPlaceholder("No data");
         return;
     }
-    
     let offset = 0;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
     while (offset < data.length) {
         if (data[offset] !== 0xAA) {
             console.warn('Invalid packet at offset', offset);
             break;
         }
-        
         if (offset + 2 >= data.length) break;
         const size = data[offset + 1];
         const fn = data[offset + 2];
-        
         if (offset + size > data.length) break;
-        
         const packet = data.slice(offset, offset + size);
         offset += size;
         processCommand(fn, packet);
@@ -912,14 +823,12 @@ function processCommand(fn, data) {
             const fg = readShort();
             const bg = readShort();
             const text = readString(data.length - idx);
-            
             ctx.fillStyle = color565toCSS(bg);
             const fw = size === 3 ? 13.5 : size === 2 ? 9 : 4.5;
             let offset = 0;
             if (fn === 15) offset = text.length * fw;
             if (fn === 14) offset = text.length * fw / 2;
             ctx.fillRect(x3 - offset, y3, text.length * fw, size * 8);
-            
             ctx.fillStyle = color565toCSS(fg);
             ctx.font = `${size * 8}px monospace`;
             ctx.textBaseline = 'top';
@@ -961,17 +870,11 @@ function drawPlaceholder(message) {
 
 document.addEventListener('DOMContentLoaded', function() {
     updateScreen();
-    loadThemeIcons();
-    updateStatus();
-    
     setTimeout(() => {
         sendCommand('nav menu');
         setTimeout(() => {
             sendCommand('nav esc');
-            setTimeout(() => {
-                updateScreen();
-                loadThemeIcons();
-            }, 500);
+            setTimeout(updateScreen, 500);
         }, 300);
     }, 1000);
 });
@@ -1001,10 +904,6 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         forceRedraw();
     }
-    if (e.key === 't' || e.key === 'T') {
-        e.preventDefault();
-        loadThemeIcons();
-    }
 });
 </script>
 </body>
@@ -1020,7 +919,6 @@ document.addEventListener('keydown', (e) => {
             JsonDocument doc;
             doc["theme"] = bruceConfig.themePath;
             doc["themeFS"] = bruceConfig.theme.fs;
-            
             String json;
             serializeJson(doc, json);
             request->send(200, "application/json", json);
@@ -1031,8 +929,8 @@ document.addEventListener('keydown', (e) => {
         if (checkUserWebAuth(request) && request->hasArg("menu")) {
             String menuName = request->arg("menu");
             FS *fs = bruceConfig.themeFS();
-            
             String imagePath;
+            
             if (menuName == "Bluetooth") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.ble);
             else if (menuName == "WiFi") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.wifi);
             else if (menuName == "Files") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.files);
@@ -1043,7 +941,7 @@ document.addEventListener('keydown', (e) => {
             else if (menuName == "IR") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.ir);
             else if (menuName == "GPS") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.gps);
             else if (menuName == "NRF24") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.nrf);
-            else if (menuName == "Scripts" || menuName == "Interpreter") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.interpreter);
+            else if (menuName == "Scripts") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.interpreter);
             else if (menuName == "Clock") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.clock);
             else if (menuName == "Others") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.others);
             else if (menuName == "Connect") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.connect);
@@ -1061,10 +959,8 @@ document.addEventListener('keydown', (e) => {
     server->on("/statusdata", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (checkUserWebAuth(request)) {
             JsonDocument doc;
-            
             doc["battery"] = 100;
             doc["charging"] = false;
-            
             doc["wifi"] = WiFi.status() == WL_CONNECTED;
             if (WiFi.getMode() == WIFI_MODE_AP || WiFi.getMode() == WIFI_MODE_APSTA) {
                 doc["wifiMode"] = "AP";
@@ -1073,14 +969,11 @@ document.addEventListener('keydown', (e) => {
                 doc["wifiMode"] = "STA";
                 doc["ssid"] = WiFi.SSID();
             }
-            
             doc["ble"] = BLEConnected;
             doc["time"] = "12:00";
-            
             doc["width"] = tftWidth;
             doc["height"] = tftHeight;
             doc["logging"] = tft.getLogging();
-            
             String json;
             serializeJson(doc, json);
             request->send(200, "application/json", json);
@@ -1205,10 +1098,8 @@ document.addEventListener('keydown', (e) => {
                     returnToMenu = true;
                     AnyKeyPress = true;
                     SerialCmdPress = true;
-                    
                     drawMainBorder(true);
                     drawStatusBar();
-                    
                     request->send(200, "text/plain", "command " + cmnd + " success");
                     return;
                 }
