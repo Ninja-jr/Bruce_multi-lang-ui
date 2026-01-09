@@ -1035,7 +1035,20 @@ document.addEventListener('keydown', (e) => {
             String imagePath;
             if (menuName == "Bluetooth") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.ble);
             else if (menuName == "WiFi") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.wifi);
-            else if (menuName == "Files") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.file);
+            else if (menuName == "Files") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.files);
+            else if (menuName == "Ethernet") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.ethernet);
+            else if (menuName == "RF") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.rf);
+            else if (menuName == "RFID") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.rfid);
+            else if (menuName == "FM") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.fm);
+            else if (menuName == "IR") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.ir);
+            else if (menuName == "GPS") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.gps);
+            else if (menuName == "NRF24") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.nrf);
+            else if (menuName == "Scripts" || menuName == "Interpreter") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.interpreter);
+            else if (menuName == "Clock") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.clock);
+            else if (menuName == "Others") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.others);
+            else if (menuName == "Connect") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.connect);
+            else if (menuName == "Config") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.config);
+            else if (menuName == "LoRa") imagePath = bruceConfig.getThemeItemImg(bruceConfig.theme.paths.lora);
             
             if (!imagePath.isEmpty() && fs->exists(imagePath)) {
                 request->send(*fs, imagePath, "image/png");
