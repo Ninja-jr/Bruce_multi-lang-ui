@@ -142,206 +142,154 @@ jobs:
               echo "Applied platform checks patch"
             fi
             
-            echo ""
-            echo "=== SMART BLUETOOTH FILE MANAGEMENT ==="
+            ESP_IDF_BASE="https://raw.githubusercontent.com/espressif/esp-idf/release/v4.3"
+            BT_API_PATH="components/bt/host/bluedroid/api"
             
-            echo "Checking existing Bluetooth files..."
-            
-            CRITICAL_FILES=(
+            echo "Downloading Bluetooth headers..."
+            BLUETOOTH_HEADERS=(
               "esp_a2dp_api.h"
               "esp_avrc_api.h"
               "esp_bt.h"
               "esp_bt_defs.h"
+              "esp_bt_device.h"
               "esp_bt_main.h"
+              "esp_gap_bt_api.h"
+              "esp_gap_ble_api.h"
+              "esp_gatt_common_api.h"
+              "esp_gatt_defs.h"
+              "esp_gattc_api.h"
+              "esp_gatts_api.h"
+              "esp_spp_api.h"
+              "esp_blufi_api.h"
+            )
+            
+            for header in "${BLUETOOTH_HEADERS[@]}"; do
+              echo "  - $header"
+              url="$ESP_IDF_BASE/$BT_API_PATH/include/api/$header"
+              curl -L -s -f -o "$PATCHED_DIR/$header" "$url" 2>/dev/null || \
+              curl -L -s -f -o "$PATCHED_DIR/$header" "$ESP_IDF_BASE/components/bt/include/$header" 2>/dev/null || \
+              echo "    ⚠ Could not download $header"
+            done
+            
+            echo ""
+            echo "Downloading Bluetooth source files..."
+            BLUETOOTH_SOURCES=(
               "a2dp_api.c"
               "avrc_api.c"
               "bt.c"
               "bt_main.c"
+              "gap_bt_api.c"
+              "spp_api.c"
+              "gattc_api.c"
+              "gatts_api.c"
             )
             
-            missing_files=()
-            for file in "${CRITICAL_FILES[@]}"; do
-              if [ ! -f "$PATCHED_DIR/$file" ]; then
-                missing_files+=("$file")
-                echo "  ❌ $file - missing"
-              else
-                echo "  ✅ $file - present"
-              fi
+            for source in "${BLUETOOTH_SOURCES[@]}"; do
+              echo "  - $source"
+              url="$ESP_IDF_BASE/$BT_API_PATH/$source"
+              curl -L -s -f -o "$PATCHED_DIR/$source" "$url" 2>/dev/null || \
+              echo "    ⚠ Could not download $source"
             done
             
-            if [ ${#missing_files[@]} -gt 0 ]; then
-              echo ""
-              echo "Downloading missing Bluetooth files from ESP-IDF v4.3..."
-              
-              ESP_IDF_BASE="https://raw.githubusercontent.com/espressif/esp-idf/release/v4.3"
-              BT_API_PATH="components/bt/host/bluedroid/api"
-              
-              for file in "${missing_files[@]}"; do
-                echo "  - Downloading $file"
-                
-                if [[ "$file" == *.h ]]; then
-                  url="$ESP_IDF_BASE/$BT_API_PATH/include/api/$file"
-                elif [[ "$file" == *.c ]]; then
-                  url="$ESP_IDF_BASE/$BT_API_PATH/$file"
-                else
-                  url="$ESP_IDF_BASE/$BT_API_PATH/$file"
-                fi
-                
-                if curl -L -s -f -o "$PATCHED_DIR/$file" "$url" 2>/dev/null; then
-                  echo "    ✓ Success"
-                else
-                  echo "    ✗ Failed to download $file"
-                  if [[ "$file" == *.h ]]; then
-                    echo "    Trying alternative location..."
-                    curl -L -s -f -o "$PATCHED_DIR/$file" "$ESP_IDF_BASE/components/bt/include/$file" 2>/dev/null && \
-                    echo "    ✓ Found in alternative location" || \
-                    echo "    ✗ Not found anywhere"
-                  fi
-                fi
-              done
-              
-              echo ""
-              echo "Downloading additional essential files..."
-              
-              ADDITIONAL_FILES=(
-                "esp_idf_version.h"
-                "esp_err.h"
-                "esp_gap_bt_api.h"
-                "esp_spp_api.h"
-                "gap_bt_api.c"
-                "spp_api.c"
-              )
-              
-              for file in "${ADDITIONAL_FILES[@]}"; do
-                if [ ! -f "$PATCHED_DIR/$file" ]; then
-                  echo "  - $file"
-                  
-                  if [[ "$file" == "esp_idf_version.h" ]]; then
-                    url="$ESP_IDF_BASE/components/esp_common/include/$file"
-                  elif [[ "$file" == "esp_err.h" ]]; then
-                    url="$ESP_IDF_BASE/components/esp_common/include/$file"
-                  elif [[ "$file" == *.h ]]; then
-                    url="$ESP_IDF_BASE/$BT_API_PATH/include/api/$file"
-                  elif [[ "$file" == *.c ]]; then
-                    url="$ESP_IDF_BASE/$BT_API_PATH/$file"
-                  fi
-                  
-                  curl -L -s -f -o "$PATCHED_DIR/$file" "$url" 2>/dev/null || true
-                fi
-              done
-              
-              if [ ! -f "$PATCHED_DIR/sdkconfig.h" ]; then
-                echo "  - Creating sdkconfig.h"
-                echo '#pragma once' > "$PATCHED_DIR/sdkconfig.h"
-                echo '#define CONFIG_BT_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
-                echo '#define CONFIG_CLASSIC_BT_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
-                echo '#define CONFIG_BT_A2DP_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
-                echo '#define CONFIG_BT_AVRC_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
-                echo '#define CONFIG_BT_SSP_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
-                echo '#define CONFIG_BT_BLE_ENABLED 0' >> "$PATCHED_DIR/sdkconfig.h"
-                echo '#define CONFIG_BT_BLUEDROID_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
-                echo '#define CONFIG_BT_STACK_NO_LOG 1' >> "$PATCHED_DIR/sdkconfig.h"
-              fi
-              
-              if [ ! -f "$PATCHED_DIR/esp_err.h" ] || [ ! -s "$PATCHED_DIR/esp_err.h" ]; then
-                echo "  - Creating minimal esp_err.h"
-                echo '#pragma once' > "$PATCHED_DIR/esp_err.h"
-                echo 'typedef int esp_err_t;' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_OK 0' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_FAIL -1' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_NO_MEM 0x101' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_INVALID_ARG 0x102' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_INVALID_STATE 0x103' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_INVALID_SIZE 0x104' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_NOT_FOUND 0x105' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_NOT_SUPPORTED 0x106' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_TIMEOUT 0x107' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_INVALID_RESPONSE 0x108' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_INVALID_CRC 0x109' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_INVALID_VERSION 0x10A' >> "$PATCHED_DIR/esp_err.h"
-                echo '#define ESP_ERR_INVALID_MAC 0x10B' >> "$PATCHED_DIR/esp_err.h"
-              fi
-              
-              echo ""
-              echo "✅ Bluetooth files downloaded/created"
-              
-            else
-              echo ""
-              echo "✅ All Bluetooth files already present - skipping download"
-            fi
+            echo '#pragma once' > "$PATCHED_DIR/sdkconfig.h"
+            echo '#define CONFIG_BT_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
+            echo '#define CONFIG_CLASSIC_BT_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
+            echo '#define CONFIG_BT_A2DP_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
+            echo '#define CONFIG_BT_AVRC_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
+            echo '#define CONFIG_BT_SSP_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
+            echo '#define CONFIG_BT_BLE_ENABLED 0' >> "$PATCHED_DIR/sdkconfig.h"
+            echo '#define CONFIG_BT_BLUEDROID_ENABLED 1' >> "$PATCHED_DIR/sdkconfig.h"
+            echo '#define CONFIG_BT_STACK_NO_LOG 1' >> "$PATCHED_DIR/sdkconfig.h"
+            echo '#define IDF_VER "4.3.7"' >> "$PATCHED_DIR/sdkconfig.h"
             
-            echo ""
-            echo "=== FINAL BLUETOOTH FILE CHECK ==="
-            echo "Headers (.h): $(ls "$PATCHED_DIR"/esp_*.h 2>/dev/null | wc -l)"
-            echo "Source files (.c): $(ls "$PATCHED_DIR"/*.c 2>/dev/null | wc -l)"
+            echo '#pragma once' > "$PATCHED_DIR/esp_idf_version_patched.h"
+            echo '#define ESP_IDF_VERSION_MAJOR   4' >> "$PATCHED_DIR/esp_idf_version_patched.h"
+            echo '#define ESP_IDF_VERSION_MINOR   3' >> "$PATCHED_DIR/esp_idf_version_patched.h"
+            echo '#define ESP_IDF_VERSION_PATCH   7' >> "$PATCHED_DIR/esp_idf_version_patched.h"
+            echo '#define ESP_IDF_VERSION_VAL(major, minor, patch) ((major << 16) | (minor << 8) | (patch))' >> "$PATCHED_DIR/esp_idf_version_patched.h"
+            echo '#define ESP_IDF_VERSION  ESP_IDF_VERSION_VAL(ESP_IDF_VERSION_MAJOR, ESP_IDF_VERSION_MINOR, ESP_IDF_VERSION_PATCH)' >> "$PATCHED_DIR/esp_idf_version_patched.h"
             
-            if ls "$PATCHED_DIR"/*.c 1> /dev/null 2>&1; then
-              echo ""
-              echo "🎉 REAL BLUETOOTH IMPLEMENTATION READY!"
-              echo "PlatformIO will compile:"
-              ls "$PATCHED_DIR"/*.c 2>/dev/null | xargs -n1 basename
-            else
-              echo ""
-              echo "⚠ No .c files found - check downloads"
-            fi
+            echo '#pragma once' > "$PATCHED_DIR/esp_err.h"
+            echo 'typedef int esp_err_t;' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_OK 0' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_FAIL -1' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_NO_MEM 0x101' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_INVALID_ARG 0x102' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_INVALID_STATE 0x103' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_INVALID_SIZE 0x104' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_NOT_FOUND 0x105' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_NOT_SUPPORTED 0x106' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_TIMEOUT 0x107' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_INVALID_RESPONSE 0x108' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_INVALID_CRC 0x109' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_INVALID_VERSION 0x10A' >> "$PATCHED_DIR/esp_err.h"
+            echo '#define ESP_ERR_INVALID_MAC 0x10B' >> "$PATCHED_DIR/esp_err.h"
             
-            echo ""
-            echo "Updating A2DP library includes..."
+            echo '#pragma once' > "$PATCHED_DIR/freertos_compat.h"
+            echo '#ifndef configNUMBER_OF_CORES' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '#define configNUMBER_OF_CORES 2' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '#endif' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '#ifndef configMAX_TASK_NAME_LEN' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '#define configMAX_TASK_NAME_LEN 16' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '#endif' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '#ifndef configTASK_NOTIFICATION_ARRAY_ENTRIES' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '#define configTASK_NOTIFICATION_ARRAY_ENTRIES 1' >> "$PATCHED_DIR/freertos_compat.h"
+            echo '#endif' >> "$PATCHED_DIR/freertos_compat.h"
             
             if [ -f "$PATCHED_HEADER" ]; then
-              echo '// ESP32-A2DP with complete Bluetooth stack' > "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#pragma once' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '// Enable Bluetooth' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#define CONFIG_BT_ENABLED 1' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#define CONFIG_CLASSIC_BT_ENABLED 1' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#define CONFIG_BT_A2DP_ENABLED 1' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#define CONFIG_BT_AVRC_ENABLED 1' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '// Include Bluetooth headers first' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#ifdef __cplusplus' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo 'extern "C" {' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#endif' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "sdkconfig.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_idf_version.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_err.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_bt.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_bt_defs.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_bt_main.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_bt_device.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_a2dp_api.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_avrc_api.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#include "esp_gap_bt_api.h"' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#ifdef __cplusplus' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '}' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '#endif' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
-              echo '// Original A2DP content' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
+              echo '// ESP32-A2DP with minimal dependencies' > "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#pragma once' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#if !defined(ARDUINO_ARCH_ESP32)' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#define ARDUINO_ARCH_ESP32 1' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#endif' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#if !defined(CONFIG_IDF_TARGET_ESP32)' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#define CONFIG_IDF_TARGET_ESP32 1' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#endif' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#ifdef __cplusplus' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo 'extern "C" {' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#endif' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#include "sdkconfig.h"' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#include "esp_err.h"' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#include "esp_a2dp_api.h"' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#include "esp_avrc_api.h"' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#ifdef __cplusplus' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '}' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '#endif' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
+              echo '' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
               
               grep -v '#include.*esp_' "$PATCHED_HEADER" | \
               grep -v '#include.*sdkconfig' | \
               grep -v '#include.*esp_idf_version' | \
               grep -v '#include.*esp_err' | \
-              grep -v '#pragma once' >> "$PATCHED_DIR/BluetoothA2DPComplete.h"
+              grep -v '#include.*esp_bt' | \
+              grep -v '#include.*esp_gap' | \
+              grep -v '#include.*esp_gatt' | \
+              grep -v '#pragma once' | \
+              grep -v '#if.*ARDUINO' | \
+              grep -v '#if.*CONFIG_IDF' | \
+              grep -v '#error' >> "$PATCHED_DIR/BluetoothA2DPFixed.h"
               
-              mv "$PATCHED_DIR/BluetoothA2DPComplete.h" "$PATCHED_HEADER"
-              echo "✅ Updated BluetoothA2DPCommon.h includes"
+              mv "$PATCHED_DIR/BluetoothA2DPFixed.h" "$PATCHED_HEADER"
             fi
             
-            echo "Fixing includes in other files..."
             find "$PATCHED_DIR" -name "*.cpp" -o -name "*.c" | while read file; do
               sed -i 's/#include "esp_/#include "/g' "$file" 2>/dev/null || true
               sed -i 's/#include <esp_/#include "/g' "$file" 2>/dev/null || true
             done
             
             echo '{' > "$PATCHED_DIR/library.json"
-            echo '  "name": "ESP32-A2DP-Full-Bluetooth",' >> "$PATCHED_DIR/library.json"
-            echo '  "version": "1.8.8-auto-download",' >> "$PATCHED_DIR/library.json"
-            echo '  "description": "ESP32-A2DP with auto-downloaded Bluetooth stack from ESP-IDF v4.3",' >> "$PATCHED_DIR/library.json"
-            echo '  "keywords": ["a2dp", "bluetooth", "audio", "whisperpair", "auto-download"],' >> "$PATCHED_DIR/library.json"
-            echo '  "authors": [{"name": "ESP32-A2DP Auto-Patcher", "maintainer": true}],' >> "$PATCHED_DIR/library.json"
+            echo '  "name": "ESP32-A2DP-WhisperPair",' >> "$PATCHED_DIR/library.json"
+            echo '  "version": "1.8.8-hybrid",' >> "$PATCHED_DIR/library.json"
+            echo '  "description": "ESP32-A2DP patched for hybrid Arduino/IDF with WhisperPair",' >> "$PATCHED_DIR/library.json"
+            echo '  "keywords": ["a2dp", "bluetooth", "audio", "whisperpair"],' >> "$PATCHED_DIR/library.json"
+            echo '  "authors": [{"name": "Bruce-Auto-Patcher", "maintainer": true}],' >> "$PATCHED_DIR/library.json"
             echo '  "frameworks": ["arduino"],' >> "$PATCHED_DIR/library.json"
             echo '  "platforms": ["espressif32"],' >> "$PATCHED_DIR/library.json"
             echo '  "build": {' >> "$PATCHED_DIR/library.json"
@@ -350,19 +298,18 @@ jobs:
             echo '      "-DCONFIG_CLASSIC_BT_ENABLED=1",' >> "$PATCHED_DIR/library.json"
             echo '      "-DCONFIG_BT_A2DP_ENABLED=1",' >> "$PATCHED_DIR/library.json"
             echo '      "-DCONFIG_BT_AVRC_ENABLED=1",' >> "$PATCHED_DIR/library.json"
-            echo '      "-DCONFIG_BT_SSP_ENABLED=1"' >> "$PATCHED_DIR/library.json"
-            echo '    ]' >> "$PATCHED_DIR/library.json"
+            echo '      "-DCONFIG_BT_SSP_ENABLED=1",' >> "$PATCHED_DIR/library.json"
+            echo '      "-DIDF_VER=\\\"4.3.7\\\"",' >> "$PATCHED_DIR/library.json"
+            echo '      "-DconfigNUMBER_OF_CORES=2",' >> "$PATCHED_DIR/library.json"
+            echo '      "-DconfigMAX_TASK_NAME_LEN=16",' >> "$PATCHED_DIR/library.json"
+            echo '      "-DconfigTASK_NOTIFICATION_ARRAY_ENTRIES=1",' >> "$PATCHED_DIR/library.json"
+            echo '      "-Isrc",' >> "$PATCHED_DIR/library.json"
+            echo '      "-Iinclude"' >> "$PATCHED_DIR/library.json"
+            echo '    ],' >> "$PATCHED_DIR/library.json"
+            echo '    "srcDir": ".",' >> "$PATCHED_DIR/library.json"
+            echo '    "includeDir": "."' >> "$PATCHED_DIR/library.json"
             echo '  }' >> "$PATCHED_DIR/library.json"
             echo '}' >> "$PATCHED_DIR/library.json"
-            
-            echo ""
-            echo "=== WHISPERPAIR READY ==="
-            echo "✅ Platform checks patched"
-            echo "✅ Bluetooth files downloaded/verified"
-            echo "✅ Includes updated"
-            echo "✅ Library configured"
-            echo ""
-            echo "🎯 Ready for WhisperPair with REAL Bluetooth audio! 🚀"
             
           fi
 
