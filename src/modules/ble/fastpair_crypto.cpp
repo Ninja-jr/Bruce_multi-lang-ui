@@ -11,8 +11,6 @@ FastPairCrypto::FastPairCrypto() {
     const char* pers = "fastpair_crypto";
     mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, 
                          (const uint8_t*)pers, strlen(pers));
-    
-    mbedtls_ecp_group_load(&ecdh_ctx.grp, MBEDTLS_ECP_DP_SECP256R1);
 }
 
 FastPairCrypto::~FastPairCrypto() {
@@ -23,16 +21,37 @@ FastPairCrypto::~FastPairCrypto() {
 }
 
 bool FastPairCrypto::generateKeyPair(uint8_t* public_key, size_t* pub_len) {
-    int ret = mbedtls_ecdh_gen_public(&ecdh_ctx.grp, &ecdh_ctx.d, &ecdh_ctx.Q,
-                                      mbedtls_ctr_drbg_random, &ctr_drbg);
-    if(ret != 0) return false;
+    mbedtls_ecp_group grp;
+    mbedtls_ecp_group_init(&grp);
+    mbedtls_mpi d;
+    mbedtls_mpi_init(&d);
+    mbedtls_ecp_point Q;
+    mbedtls_ecp_point_init(&Q);
+    
+    mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1);
+    
+    int ret = mbedtls_ecdh_gen_public(&grp, &d, &Q, mbedtls_ctr_drbg_random, &ctr_drbg);
+    if(ret != 0) {
+        mbedtls_ecp_group_free(&grp);
+        mbedtls_mpi_free(&d);
+        mbedtls_ecp_point_free(&Q);
+        return false;
+    }
     
     *pub_len = 65;
     public_key[0] = 0x04;
     size_t olen;
-    ret = mbedtls_ecp_point_write_binary(&ecdh_ctx.grp, &ecdh_ctx.Q,
-                                         MBEDTLS_ECP_PF_UNCOMPRESSED,
+    ret = mbedtls_ecp_point_write_binary(&grp, &Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
                                          &olen, public_key, *pub_len);
+    
+    mbedtls_mpi_copy(&ecdh_ctx.d, &d);
+    mbedtls_ecp_copy(&ecdh_ctx.Q, &Q);
+    mbedtls_ecp_group_copy(&ecdh_ctx.grp, &grp);
+    
+    mbedtls_ecp_group_free(&grp);
+    mbedtls_mpi_free(&d);
+    mbedtls_ecp_point_free(&Q);
+    
     return ret == 0;
 }
 
@@ -40,18 +59,29 @@ bool FastPairCrypto::computeSharedSecret(const uint8_t* peer_public, size_t peer
     mbedtls_ecp_point peer_point;
     mbedtls_ecp_point_init(&peer_point);
     
-    int ret = mbedtls_ecp_point_read_binary(&ecdh_ctx.grp, &peer_point, 
-                                           peer_public, peer_len);
+    mbedtls_ecp_group grp;
+    mbedtls_ecp_group_init(&grp);
+    mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1);
+    
+    int ret = mbedtls_ecp_point_read_binary(&grp, &peer_point, peer_public, peer_len);
     if(ret != 0) {
         mbedtls_ecp_point_free(&peer_point);
+        mbedtls_ecp_group_free(&grp);
         return false;
     }
     
-    ret = mbedtls_ecdh_compute_shared(&ecdh_ctx.grp, &ecdh_ctx.z,
-                                      &peer_point, &ecdh_ctx.d,
+    mbedtls_mpi z;
+    mbedtls_mpi_init(&z);
+    
+    ret = mbedtls_ecdh_compute_shared(&grp, &z, &peer_point, &ecdh_ctx.d,
                                       mbedtls_ctr_drbg_random, &ctr_drbg);
     
+    mbedtls_mpi_copy(&ecdh_ctx.z, &z);
+    
     mbedtls_ecp_point_free(&peer_point);
+    mbedtls_mpi_free(&z);
+    mbedtls_ecp_group_free(&grp);
+    
     return ret == 0;
 }
 
@@ -62,7 +92,9 @@ bool FastPairCrypto::deriveFastPairKeys(const uint8_t* nonce, size_t nonce_len) 
     memcpy(input, nonce, 16);
     
     size_t z_len = 32;
-    mbedtls_mpi_write_binary(&ecdh_ctx.z, &input[16], z_len);
+    uint8_t z_buf[32];
+    mbedtls_mpi_write_binary(&ecdh_ctx.z, z_buf, z_len);
+    memcpy(&input[16], z_buf, 32);
     
     uint8_t derived[32];
     mbedtls_aes_setkey_enc(&aes_ctx, &input[16], 256);
