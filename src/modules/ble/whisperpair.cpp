@@ -1,5 +1,6 @@
 #include "whisperpair.h"
 #include "whisperpair_audio.h"
+#include "whisperpair_scan.h"
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include <globals.h>
@@ -7,7 +8,9 @@
 extern std::vector<String> fastPairDevices;
 
 bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
+    tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("CONFIRMATION REQUIRED");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     padprintln(message);
     padprintln("");
     padprintln("Hold SELECT for " + String(ms/1000) + "s");
@@ -49,7 +52,10 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
 }
 
 bool attemptKeyBasedPairing(NimBLEAddress target) {
-    displayMessage("Connecting to target...", "", "", "", 0);
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("CONNECTING");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    padprintln("Connecting to target...");
 
     NimBLEClient* pClient = NimBLEDevice::createClient();
 
@@ -59,11 +65,12 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
         return false;
     }
 
-    displayMessage("Connected, discovering...", "", "", "", 0);
+    padprintln("Connected");
+    padprintln("Discovering...");
 
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(pService == nullptr) {
-        displayMessage("Fast Pair service not found", "", "", "", 0);
+        displayMessage("Fast Pair service", "not found", "", "", 0);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
@@ -91,10 +98,11 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
 
     esp_fill_random(&packet[8], 8);
 
-    displayMessage("Sending test packet...", "", "", "", 0);
+    padprintln("Sending test packet...");
 
     if(pChar->writeValue(packet, 16, false)) {
-        displayMessage("Packet sent, checking...", "", "", "", 0);
+        padprintln("Packet sent");
+        padprintln("Checking...");
         delay(100);
 
         bool vulnerable = pChar->canRead() || pChar->canNotify();
@@ -103,10 +111,8 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
         NimBLEDevice::deleteClient(pClient);
 
         if(vulnerable) {
-            displayMessage("DEVICE VULNERABLE!", "", "", "", 0);
             return true;
         } else {
-            displayMessage("No response - may be patched", "", "", "", 0);
             return false;
         }
     }
@@ -117,7 +123,13 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
 }
 
 void testFastPairVulnerability() {
-    String input = keyboard("", 17, "Target MAC (AA:BB:CC:DD:EE:FF)");
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("FAST PAIR TEST");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    padprintln("Enter target MAC:");
+    padprintln("(AA:BB:CC:DD:EE:FF)");
+    
+    String input = keyboard("", 17, "Target MAC");
     if(input.isEmpty()) return;
 
     NimBLEAddress target(input.c_str(), BLE_ADDR_RANDOM);
@@ -126,6 +138,11 @@ void testFastPairVulnerability() {
         return;
     }
 
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("TESTING");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    padprintln("Testing device...");
+    
     bool vulnerable = attemptKeyBasedPairing(target);
 
     Serial.printf("[WhisperPair] %s - %s\n", 
@@ -133,11 +150,19 @@ void testFastPairVulnerability() {
         vulnerable ? "VULNERABLE" : "PATCHED/SAFE"
     );
 
-    delay(3000);
+    if(vulnerable) {
+        displayMessage("VULNERABLE!", "Device is vulnerable", "", "", 3000);
+    } else {
+        displayMessage("PATCHED/SAFE", "Device may be patched", "", "", 3000);
+    }
 }
 
 void whisperPairMenu() {
     std::vector<Option> options;
+
+    options.push_back({"[🔍] Scan & Test", []() {
+        whisperPairScanMenu();
+    }});
 
     options.push_back({"[-] Test Vulnerability", []() {
         testFastPairVulnerability();
