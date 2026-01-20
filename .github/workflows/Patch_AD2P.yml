@@ -134,10 +134,8 @@ jobs:
             if [ -f "$PATCHED_HEADER" ]; then
               cp "$PATCHED_HEADER" "$PATCHED_HEADER.bak"
               
-              # Simple patch: comment out ALL #error lines
               sed -i 's/^\([[:space:]]*\)#error.*$/\1\/\/ [PATCHED] #error "Platform check disabled"/' "$PATCHED_HEADER"
               
-              # Force platform checks to true
               sed -i 's/#if defined(ARDUINO_ARCH_ESP32)/#if 1 \/\/ [PATCHED] Force platform/' "$PATCHED_HEADER"
               sed -i 's/#ifdef ARDUINO/#if 1 \/\/ [PATCHED] Force ARDUINO/' "$PATCHED_HEADER"
               sed -i 's/#if defined(CONFIG_IDF_TARGET_ESP32)/#if 1 \/\/ [PATCHED] Force CONFIG_IDF_TARGET_ESP32/' "$PATCHED_HEADER"
@@ -148,18 +146,15 @@ jobs:
               exit 1
             fi
             
-            # Create minimal library.json
-            cat > "$PATCHED_DIR/library.json" << 'LIBJSON'
-{
-  "name": "ESP32-A2DP-patched",
-  "version": "1.8.8-bruce-patched",
-  "description": "ESP32-A2DP patched for Bruce firmware",
-  "keywords": ["a2dp", "bluetooth", "audio", "esp32"],
-  "authors": [{"name": "Phil Schatzmann", "maintainer": true}],
-  "frameworks": ["arduino"],
-  "platforms": ["espressif32"]
-}
-LIBJSON
+            echo '{' > "$PATCHED_DIR/library.json"
+            echo '  "name": "ESP32-A2DP-patched",' >> "$PATCHED_DIR/library.json"
+            echo '  "version": "1.8.8-bruce-patched",' >> "$PATCHED_DIR/library.json"
+            echo '  "description": "ESP32-A2DP patched for Bruce firmware",' >> "$PATCHED_DIR/library.json"
+            echo '  "keywords": ["a2dp", "bluetooth", "audio", "esp32"],' >> "$PATCHED_DIR/library.json"
+            echo '  "authors": [{"name": "Phil Schatzmann", "maintainer": true}],' >> "$PATCHED_DIR/library.json"
+            echo '  "frameworks": ["arduino"],' >> "$PATCHED_DIR/library.json"
+            echo '  "platforms": ["espressif32"]' >> "$PATCHED_DIR/library.json"
+            echo '}' >> "$PATCHED_DIR/library.json"
             
             echo "Library patching complete"
           fi
@@ -171,7 +166,6 @@ LIBJSON
           HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
           
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
-            # Simple sed replacement - more reliable than Python in YAML
             sed -i 's|pschatzmann/ESP32-A2DP.*|lib/ESP32-A2DP-patched|g' platformio.ini
             sed -i 's|https://github.com/pschatzmann/ESP32-A2DP.*|lib/ESP32-A2DP-patched|g' platformio.ini
             echo "Updated platformio.ini to use local patched library"
