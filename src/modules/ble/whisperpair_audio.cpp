@@ -73,7 +73,10 @@ void AudioCommandService::stop() {
 }
 
 bool attemptAudioCommandHijack(NimBLEAddress target) {
-    displayMessage("Audio CMD Hijack", "Connecting...", "", "", 0);
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("AUDIO HIJACK");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    padprintln("Connecting...");
     
     NimBLEClient* pClient = NimBLEDevice::createClient();
     
@@ -83,7 +86,8 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
         return false;
     }
     
-    displayMessage("Connected", "Discovering...", "", "", 0);
+    padprintln("Connected");
+    padprintln("Discovering...");
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID("19B10000-E8F2-537E-4F6C-D104768A1214"));
     if(!pService) {
@@ -97,7 +101,8 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
         return false;
     }
     
-    displayMessage("Audio service found", "Sending tones...", "", "", 0);
+    padprintln("Audio service found");
+    padprintln("Sending tones...");
     
     uint16_t tones[] = {440, 550, 660, 770};
     for(int i = 0; i < 4; i++) {
@@ -123,9 +128,13 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
 }
 
 void audioCommandHijackTest() {
-    displayMessage("AUDIO CMD HIJACK", "Enter target MAC", "", "", 0);
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("AUDIO CMD HIJACK");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    padprintln("Enter target MAC:");
+    padprintln("(AA:BB:CC:DD:EE:FF)");
     
-    String input = keyboard("", 17, "Target MAC (AA:BB:CC:DD:EE:FF)");
+    String input = keyboard("", 17, "Target MAC");
     if(input.isEmpty()) return;
     
     NimBLEAddress target(input.c_str(), BLE_ADDR_RANDOM);
