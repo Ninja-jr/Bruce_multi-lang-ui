@@ -1,5 +1,6 @@
 #pragma once
 #include <NimBLEDevice.h>
+#include <Arduino.h>
 
 bool requireButtonHoldConfirmation(const char* message, uint32_t ms = 3000);
 
