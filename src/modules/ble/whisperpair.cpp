@@ -81,7 +81,7 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
     packet[1] = 0x11;
     
     uint8_t targetBytes[6];
-    String macStr = target.toString();
+    std::string macStr = target.toString();
     sscanf(macStr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
            &targetBytes[5], &targetBytes[4], &targetBytes[3],
            &targetBytes[2], &targetBytes[1], &targetBytes[0]);
