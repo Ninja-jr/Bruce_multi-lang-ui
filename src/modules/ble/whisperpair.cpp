@@ -81,9 +81,9 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
     packet[1] = 0x11;
     
     uint8_t targetBytes[6];
-    uint64_t addr = target.getNative();
+    const uint8_t* addr = target.getNative();
     for(int i = 0; i < 6; i++) {
-        targetBytes[5-i] = (addr >> (8*i)) & 0xFF;
+        targetBytes[5-i] = addr[i];
     }
     memcpy(&packet[2], targetBytes, 6);
     
