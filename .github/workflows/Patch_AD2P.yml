@@ -123,9 +123,8 @@ jobs:
           HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
           
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
-            echo "=== FORCE CLEANING PREVIOUS PATCH ==="
             rm -rf "lib/ESP32-A2DP-patched" 2>/dev/null || true
-            echo "✅ Force removed previous patch directory"
+            echo "✅ Cleaned previous patch"
           fi
 
       - name: Create Patched A2DP Library
@@ -135,55 +134,141 @@ jobs:
           HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
           
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
-            echo "=== CREATING PROPER PATCHED LIBRARY ==="
-            
             PATCHED_DIR="lib/ESP32-A2DP-patched"
             mkdir -p "$PATCHED_DIR"
             
             echo "=== CLONING ESP32-A2DP ==="
-            git clone --depth 1 https://github.com/pschatzmann/ESP32-A2DP.git "$PATCHED_DIR/temp"
+            git clone --depth 1 https://github.com/pschatzmann/ESP32-A2DP.git "$PATCHED_DIR"
             
-            echo "=== COPYING ALL LIBRARY FILES ==="
-            cp -r "$PATCHED_DIR/temp"/* "$PATCHED_DIR/" 2>/dev/null || true
-            rm -rf "$PATCHED_DIR/temp"
+            echo "=== DOWNLOADING ESP-IDF v4.3 HEADERS ==="
             
-            echo "=== DETECTING ARDUINO FRAMEWORK ESP-IDF HEADERS ==="
+            ESP_IDF_BASE="https://raw.githubusercontent.com/espressif/esp-idf/release/v4.3"
             
-            echo "Looking for framework ESP-IDF headers..."
-            FRAMEWORK_IDF_PATH=""
-            
-            if [ -d "$HOME/.platformio/packages/framework-arduinoespressif32-libs" ]; then
-              find "$HOME/.platformio/packages/framework-arduinoespressif32-libs" -name "esp_bt.h" -type f | head -1 | while read bt_header; do
-                FRAMEWORK_IDF_PATH=$(dirname "$(dirname "$(dirname "$bt_header")")")
-                echo "ESP-IDF path in framework: $FRAMEWORK_IDF_PATH"
+            download_header() {
+              local header_name="$1"
+              local output_dir="$2"
+              local output_path="$output_dir/$header_name"
+              
+              if [ -f "$output_path" ]; then
+                return 0
+              fi
+              
+              echo "  Downloading: $header_name"
+              
+              local search_paths=(
+                "components/bt/include/$header_name"
+                "components/bt/host/bluedroid/api/include/api/$header_name"
+                "components/esp_common/include/$header_name"
+                "components/soc/include/$header_name"
+                "components/freertos/include/freertos/$header_name"
+                "components/freertos/FreeRTOS-Kernel/include/$header_name"
+                "components/esp_system/include/$header_name"
+                "components/driver/include/$header_name"
+                "components/heap/include/$header_name"
+                "components/log/include/$header_name"
+                "components/hal/include/$header_name"
+                "components/esp_rom/include/$header_name"
+                "components/esp_timer/include/$header_name"
+                "components/esp_pm/include/$header_name"
+                "components/esp_hw_support/include/$header_name"
+                "components/esp32/include/$header_name"
+                "components/xtensa/include/$header_name"
+              )
+              
+              for path in "${search_paths[@]}"; do
+                local url="$ESP_IDF_BASE/$path"
+                if curl -L -s -f -o "$output_path" "$url" 2>/dev/null; then
+                  echo "    ✓ From: $path"
+                  return 0
+                fi
               done
-            fi
+              
+              echo "    ✗ Not found, creating stub"
+              
+              case "$header_name" in
+                "esp_err.h")
+                  echo '#pragma once' > "$output_path"
+                  echo 'typedef int esp_err_t;' >> "$output_path"
+                  echo '#define ESP_OK 0' >> "$output_path"
+                  echo '#define ESP_FAIL -1' >> "$output_path"
+                  ;;
+                "sdkconfig.h")
+                  echo '#pragma once' > "$output_path"
+                  echo '#define CONFIG_BT_ENABLED 1' >> "$output_path"
+                  echo '#define CONFIG_CLASSIC_BT_ENABLED 1' >> "$output_path"
+                  echo '#define CONFIG_BT_A2DP_ENABLED 1' >> "$output_path"
+                  echo '#define CONFIG_BT_AVRC_ENABLED 1' >> "$output_path"
+                  echo '#define CONFIG_BT_SSP_ENABLED 1' >> "$output_path"
+                  echo '#define CONFIG_BT_BLE_ENABLED 0' >> "$output_path"
+                  echo '#define CONFIG_BT_BLUEDROID_ENABLED 1' >> "$output_path"
+                  echo '#define CONFIG_BT_STACK_NO_LOG 1' >> "$output_path"
+                  echo '#define IDF_VER "4.3.7"' >> "$output_path"
+                  ;;
+                "freertos.h"|"FreeRTOS.h"|"task.h"|"queue.h"|"semphr.h"|"event_groups.h")
+                  echo '#pragma once' > "$output_path"
+                  echo '#define configNUMBER_OF_CORES 2' >> "$output_path"
+                  echo '#define configMAX_TASK_NAME_LEN 16' >> "$output_path"
+                  echo '#define configTASK_NOTIFICATION_ARRAY_ENTRIES 1' >> "$output_path"
+                  echo '#define configUSE_TIMERS 1' >> "$output_path"
+                  echo '#define INCLUDE_xTimerPendFunctionCall 1' >> "$output_path"
+                  echo '#define pdMS_TO_TICKS(ms) ((ms) / portTICK_PERIOD_MS)' >> "$output_path"
+                  echo 'typedef void* TaskHandle_t;' >> "$output_path"
+                  echo 'typedef void* QueueHandle_t;' >> "$output_path"
+                  echo 'typedef void* SemaphoreHandle_t;' >> "$output_path"
+                  ;;
+                *)
+                  echo '#pragma once' > "$output_path"
+                  echo "// Stub for $header_name" >> "$output_path"
+                  ;;
+              esac
+              
+              return 1
+            }
             
-            if [ -z "$FRAMEWORK_IDF_PATH" ] && [ -d ".pio" ]; then
-              find ".pio" -name "esp_bt.h" -type f | head -1 | while read bt_header; do
-                FRAMEWORK_IDF_PATH=$(dirname "$(dirname "$(dirname "$bt_header")")")
-                echo "ESP-IDF path in .pio cache: $FRAMEWORK_IDF_PATH"
+            mkdir -p "$PATCHED_DIR/esp_idf_headers"
+            
+            REQUIRED_HEADERS=()
+            
+            find "$PATCHED_DIR" -name "*.h" -o -name "*.cpp" -o -name "*.c" | while read file; do
+              grep -h '^#include[[:space:]]*["<]esp_' "$file" 2>/dev/null | \
+              sed 's/^#include[[:space:]]*["<]\(esp_[^">]*\)[">].*/\1/' | \
+              while read header; do
+                if [[ ! " ${REQUIRED_HEADERS[@]} " =~ " ${header} " ]]; then
+                  REQUIRED_HEADERS+=("$header")
+                fi
               done
-            fi
+              
+              grep -h '^#include[[:space:]]*["<].*freertos' "$file" 2>/dev/null | \
+              sed 's/^#include[[:space:]]*["<].*\/\([^"/]*\)[">].*/\1/' | \
+              while read header; do
+                if [[ "$header" == *.h ]] && [[ ! " ${REQUIRED_HEADERS[@]} " =~ " ${header} " ]]; then
+                  REQUIRED_HEADERS+=("$header")
+                fi
+              done
+            done
             
-            if [ -z "$FRAMEWORK_IDF_PATH" ]; then
-              echo "Creating minimal stubs"
-              
-              mkdir -p "$PATCHED_DIR/framework_stubs"
-              
-              echo '#pragma once' > "$PATCHED_DIR/framework_stubs/esp_err.h"
-              echo 'typedef int esp_err_t;' >> "$PATCHED_DIR/framework_stubs/esp_err.h"
-              echo '#define ESP_OK 0' >> "$PATCHED_DIR/framework_stubs/esp_err.h"
-              echo '#define ESP_FAIL -1' >> "$PATCHED_DIR/framework_stubs/esp_err.h"
-              
-              echo '#pragma once' > "$PATCHED_DIR/framework_stubs/sdkconfig.h"
-              echo '#define CONFIG_BT_ENABLED 1' >> "$PATCHED_DIR/framework_stubs/sdkconfig.h"
-              echo '#define CONFIG_CLASSIC_BT_ENABLED 1' >> "$PATCHED_DIR/framework_stubs/sdkconfig.h"
-              echo '#define CONFIG_BT_A2DP_ENABLED 1' >> "$PATCHED_DIR/framework_stubs/sdkconfig.h"
-              echo '#define CONFIG_BT_AVRC_ENABLED 1' >> "$PATCHED_DIR/framework_stubs/sdkconfig.h"
-              
-              FRAMEWORK_IDF_PATH="$PATCHED_DIR/framework_stubs"
-            fi
+            COMMON_HEADERS=(
+              "esp_err.h"
+              "sdkconfig.h"
+              "esp_a2dp_api.h"
+              "esp_avrc_api.h"
+              "esp_bt.h"
+              "esp_bt_defs.h"
+              "esp_bt_main.h"
+              "esp_bt_device.h"
+              "esp_gap_bt_api.h"
+              "esp_spp_api.h"
+            )
+            
+            for header in "${COMMON_HEADERS[@]}"; do
+              if [[ ! " ${REQUIRED_HEADERS[@]} " =~ " ${header} " ]]; then
+                REQUIRED_HEADERS+=("$header")
+              fi
+            done
+            
+            for header in "${REQUIRED_HEADERS[@]}"; do
+              download_header "$header" "$PATCHED_DIR/esp_idf_headers"
+            done
             
             echo "=== PATCHING A2DP LIBRARY ==="
             
@@ -191,75 +276,50 @@ jobs:
             if [ -f "$PATCHED_HEADER" ]; then
               cp "$PATCHED_HEADER" "$PATCHED_HEADER.bak"
               
-              echo "Applying platform and include patches..."
+              sed -i 's/^\([[:space:]]*\)#error.*$/\1\/\/ [PATCHED] Platform check disabled/' "$PATCHED_HEADER"
               
-              sed -i 's/^\([[:space:]]*\)#error.*platform.*$/\1\/\/ [WHISPERPAIR] Platform check disabled/' "$PATCHED_HEADER"
-              sed -i 's/^\([[:space:]]*\)#error.*Arduino.*$/\1\/\/ [WHISPERPAIR] Arduino check disabled/' "$PATCHED_HEADER"
+              sed -i 's/#if defined(ARDUINO_ARCH_ESP32)/#if 1 \/\/ [PATCHED] Force ESP32/' "$PATCHED_HEADER"
+              sed -i 's/#ifdef ARDUINO/#if 1 \/\/ [PATCHED] Force ARDUINO/' "$PATCHED_HEADER"
+              sed -i 's/#ifndef ARDUINO/#if 0 \/\/ [PATCHED] Disable !ARDUINO/' "$PATCHED_HEADER"
+              sed -i 's/#if !defined(ARDUINO)/#if 0 \/\/ [PATCHED] Disable !ARDUINO/' "$PATCHED_HEADER"
               
-              sed -i 's/#if defined(ARDUINO_ARCH_ESP32)/#if 1 \/\/ [WHISPERPAIR] Force ARDUINO_ARCH_ESP32/' "$PATCHED_HEADER"
-              sed -i 's/#ifdef ARDUINO/#if 1 \/\/ [WHISPERPAIR] Force ARDUINO/' "$PATCHED_HEADER"
-              sed -i 's/#ifndef ARDUINO/#if 0 \/\/ [WHISPERPAIR] Disable !ARDUINO/' "$PATCHED_HEADER"
-              sed -i 's/#if !defined(ARDUINO)/#if 0 \/\/ [WHISPERPAIR] Disable !ARDUINO/' "$PATCHED_HEADER"
+              sed -i 's/#if defined(CONFIG_IDF_TARGET_ESP32)/#if 1 \/\/ [PATCHED] Force ESP32 target/' "$PATCHED_HEADER"
+              sed -i 's/#ifdef CONFIG_IDF_TARGET_ESP32/#if 1 \/\/ [PATCHED] Force ESP32 target/' "$PATCHED_HEADER"
               
-              sed -i 's/#if defined(CONFIG_IDF_TARGET_ESP32)/#if 1 \/\/ [WHISPERPAIR] Force CONFIG_IDF_TARGET_ESP32/' "$PATCHED_HEADER"
-              sed -i 's/#ifdef CONFIG_IDF_TARGET_ESP32/#if 1 \/\/ [WHISPERPAIR] Force CONFIG_IDF_TARGET_ESP32/' "$PATCHED_HEADER"
-              sed -i 's/#ifndef CONFIG_IDF_TARGET_ESP32/#if 0 \/\/ [WHISPERPAIR] Disable !CONFIG_IDF_TARGET_ESP32/' "$PATCHED_HEADER"
-              
-              sed -i '1i // [WHISPERPAIR-PATCHED] Uses framework ESP-IDF headers' "$PATCHED_HEADER"
+              sed -i '1i // [PATCHED] Using ESP-IDF v4.3 headers' "$PATCHED_HEADER"
               sed -i '2i #ifndef ARDUINO_ARCH_ESP32' "$PATCHED_HEADER"
               sed -i '3i #define ARDUINO_ARCH_ESP32' "$PATCHED_HEADER"
               sed -i '4i #endif' "$PATCHED_HEADER"
-              sed -i '5i ' "$PATCHED_HEADER"
-              sed -i '6i #ifndef CONFIG_IDF_TARGET_ESP32' "$PATCHED_HEADER"
-              sed -i '7i #define CONFIG_IDF_TARGET_ESP32' "$PATCHED_HEADER"
-              sed -i '8i #endif' "$PATCHED_HEADER"
-              
-              echo "Patched main header"
+              sed -i '5i #ifndef CONFIG_IDF_TARGET_ESP32' "$PATCHED_HEADER"
+              sed -i '6i #define CONFIG_IDF_TARGET_ESP32' "$PATCHED_HEADER"
+              sed -i '7i #endif' "$PATCHED_HEADER"
             fi
             
-            echo "=== CREATING FRAMEWORK INCLUDE WRAPPER ==="
+            echo "=== UPDATING INCLUDE PATHS ==="
             
-            echo '#pragma once' > "$PATCHED_DIR/framework_includes.h"
-            echo '#ifdef __cplusplus' >> "$PATCHED_DIR/framework_includes.h"
-            echo 'extern "C" {' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#endif' >> "$PATCHED_DIR/framework_includes.h"
-            echo '' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "esp_err.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "sdkconfig.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "esp_bt.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "esp_bt_defs.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "esp_bt_main.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "esp_bt_device.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "esp_a2dp_api.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "esp_avrc_api.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#include "esp_gap_bt_api.h"' >> "$PATCHED_DIR/framework_includes.h"
-            echo '' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#ifdef __cplusplus' >> "$PATCHED_DIR/framework_includes.h"
-            echo '}' >> "$PATCHED_DIR/framework_includes.h"
-            echo '#endif' >> "$PATCHED_DIR/framework_includes.h"
-            
-            echo "=== UPDATING ALL SOURCE FILES ==="
-            
-            find "$PATCHED_DIR" \( -name "*.cpp" -o -name "*.c" -o -name "*.h" \) ! -name "framework_includes.h" | while read file; do
-              if grep -q "#include.*esp_" "$file" || grep -q "#include.*freertos" "$file"; then
-                sed -i '1i #include "framework_includes.h"' "$file"
-              fi
+            find "$PATCHED_DIR" \( -name "*.cpp" -o -name "*.c" -o -name "*.h" \) ! -path "*/esp_idf_headers/*" | while read file; do
+              sed -i 's/#include[[:space:]]*["<]\(esp_[^">]*\)[">]/#include "esp_idf_headers\/\1"/g' "$file" 2>/dev/null || true
+              sed -i 's/#include[[:space:]]*["<].*\/\(esp_[^">]*\)[">]/#include "esp_idf_headers\/\1"/g' "$file" 2>/dev/null || true
               
-              sed -i 's/^#include[[:space:]]*["<]esp_/#\/\/ #include "esp_/' "$file" 2>/dev/null || true
-              sed -i 's/^#include[[:space:]]*["<]freertos/#\/\/ #include "freertos/' "$file" 2>/dev/null || true
-              sed -i 's/^#include[[:space:]]*["<]sdkconfig/#\/\/ #include "sdkconfig/' "$file" 2>/dev/null || true
+              sed -i 's/#include[[:space:]]*["<].*freertos\/\([^">]*\)[">]/#include "esp_idf_headers\/\1"/g' "$file" 2>/dev/null || true
+              sed -i 's/#include[[:space:]]*["<]freertos\/\([^">]*\)[">]/#include "esp_idf_headers\/\1"/g' "$file" 2>/dev/null || true
               
-              sed -i 's/^\([[:space:]]*\)#error.*$/\1\/\/ [WHISPERPAIR] Error check disabled/' "$file" 2>/dev/null || true
+              sed -i 's/#include[[:space:]]*["<]sdkconfig[">]/#include "esp_idf_headers\/sdkconfig.h"/g' "$file" 2>/dev/null || true
+              
+              sed -i 's/^\([[:space:]]*\)#error.*$/\1\/\/ [PATCHED] Error check disabled/' "$file" 2>/dev/null || true
             done
             
-            echo "=== CREATING LIBRARY CONFIG ==="
+            find "$PATCHED_DIR/esp_idf_headers" -name "*.h" | while read header; do
+              sed -i 's/#include[[:space:]]*["<]\(esp_[^">]*\)[">]/#include "\1"/g' "$header" 2>/dev/null || true
+              sed -i 's/#include[[:space:]]*["<].*\/\(esp_[^">]*\)[">]/#include "\1"/g' "$header" 2>/dev/null || true
+            done
             
             echo '{' > "$PATCHED_DIR/library.json"
-            echo '  "name": "ESP32-A2DP-Framework",' >> "$PATCHED_DIR/library.json"
-            echo '  "version": "1.8.8-framework",' >> "$PATCHED_DIR/library.json"
-            echo '  "description": "ESP32-A2DP using Arduino framework ESP-IDF headers",' >> "$PATCHED_DIR/library.json"
-            echo '  "keywords": ["a2dp", "bluetooth", "audio", "whisperpair", "framework"],' >> "$PATCHED_DIR/library.json"
-            echo '  "authors": [{"name": "WhisperPair Framework-Patch", "maintainer": true}],' >> "$PATCHED_DIR/library.json"
+            echo '  "name": "ESP32-A2DP-IDFv4.3",' >> "$PATCHED_DIR/library.json"
+            echo '  "version": "1.8.8-idf4.3",' >> "$PATCHED_DIR/library.json"
+            echo '  "description": "ESP32-A2DP with ESP-IDF v4.3 headers",' >> "$PATCHED_DIR/library.json"
+            echo '  "keywords": ["a2dp", "bluetooth", "audio", "whisperpair", "idf4.3"],' >> "$PATCHED_DIR/library.json"
+            echo '  "authors": [{"name": "WhisperPair IDF-Patcher", "maintainer": true}],' >> "$PATCHED_DIR/library.json"
             echo '  "frameworks": ["arduino"],' >> "$PATCHED_DIR/library.json"
             echo '  "platforms": ["espressif32"],' >> "$PATCHED_DIR/library.json"
             echo '  "build": {' >> "$PATCHED_DIR/library.json"
@@ -270,30 +330,19 @@ jobs:
             echo '      "-DCONFIG_BT_AVRC_ENABLED=1",' >> "$PATCHED_DIR/library.json"
             echo '      "-DCONFIG_BT_SSP_ENABLED=1",' >> "$PATCHED_DIR/library.json"
             echo '      "-DCONFIG_BT_BLUEDROID_ENABLED=1",' >> "$PATCHED_DIR/library.json"
+            echo '      "-DCONFIG_BT_STACK_NO_LOG=1",' >> "$PATCHED_DIR/library.json"
             echo '      "-DconfigNUMBER_OF_CORES=2",' >> "$PATCHED_DIR/library.json"
             echo '      "-DconfigMAX_TASK_NAME_LEN=16",' >> "$PATCHED_DIR/library.json"
             echo '      "-DconfigTASK_NOTIFICATION_ARRAY_ENTRIES=1",' >> "$PATCHED_DIR/library.json"
             echo '      "-DARDUINO_ARCH_ESP32",' >> "$PATCHED_DIR/library.json"
-            echo '      "-DCONFIG_IDF_TARGET_ESP32"' >> "$PATCHED_DIR/library.json"
+            echo '      "-DCONFIG_IDF_TARGET_ESP32",' >> "$PATCHED_DIR/library.json"
+            echo '      "-DIDF_VER=\"4.3.7\"",' >> "$PATCHED_DIR/library.json"
+            echo '      "-Iesp_idf_headers"' >> "$PATCHED_DIR/library.json"
             echo '    ]' >> "$PATCHED_DIR/library.json"
             echo '  }' >> "$PATCHED_DIR/library.json"
             echo '}' >> "$PATCHED_DIR/library.json"
             
-            echo '#!/bin/bash' > "$PATCHED_DIR/setup_framework_links.sh"
-            echo 'if [ ! -f "framework_stubs/esp_bt.h" ] && [ -d "$HOME/.platformio/packages/framework-arduinoespressif32-libs" ]; then' >> "$PATCHED_DIR/setup_framework_links.sh"
-            echo '  echo "Creating symlinks to framework headers..."' >> "$PATCHED_DIR/setup_framework_links.sh"
-            echo '  mkdir -p framework_stubs' >> "$PATCHED_DIR/setup_framework_links.sh"
-            echo '  find "$HOME/.platformio/packages/framework-arduinoespressif32-libs" -name "esp_*.h" -type f | head -20 | while read header; do' >> "$PATCHED_DIR/setup_framework_links.sh"
-            echo '    ln -sf "$header" "framework_stubs/$(basename "$header")" 2>/dev/null || true' >> "$PATCHED_DIR/setup_framework_links.sh"
-            echo '  done' >> "$PATCHED_DIR/setup_framework_links.sh"
-            echo 'fi' >> "$PATCHED_DIR/setup_framework_links.sh"
-            chmod +x "$PATCHED_DIR/setup_framework_links.sh"
-            
-            echo "✅ CREATED FRAMEWORK-COMPATIBLE PATCHED LIBRARY"
-            echo "   - Kept all original files"
-            echo "   - Patched to use framework headers"
-            echo "   - Platform checks disabled"
-            echo "   - Includes framework wrapper"
+            echo "✅ SMART PATCHER COMPLETE"
             
           fi
 
@@ -311,7 +360,7 @@ jobs:
             
             sed -i '/^lib_deps =/a\    lib/ESP32-A2DP-patched' platformio.ini
             
-            echo "Updated platformio.ini to use local patched library"
+            echo "Updated platformio.ini"
           fi
 
       - name: Verify platformio.ini Update
@@ -323,10 +372,8 @@ jobs:
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
             echo "=== Verifying platformio.ini update ==="
             echo ""
-            echo "Checking for patched library reference:"
             grep -n "lib/ESP32-A2DP-patched" platformio.ini || echo "Patched library reference not found"
             echo ""
-            echo "Checking for ESP32-A2DP references:"
             grep -n "ESP32-A2DP" platformio.ini || echo "No ESP32-A2DP references found"
           fi
 
@@ -344,18 +391,18 @@ jobs:
             git add lib/ESP32-A2DP-patched/
             git add platformio.ini
             if ! git diff --cached --quiet; then
-              git commit -m "🔧 Auto-patch: Add ESP32-A2DP library patched for framework headers
+              git commit -m "🔧 Auto-patch: Add ESP32-A2DP with ESP-IDF v4.3 headers
               
-              Patched ESP32-A2DP for hybrid Arduino/framework builds:
-              - Cloned from official repository
+              Smart patching for WhisperPair:
+              - Cloned ESP32-A2DP from official repo
+              - Downloaded ESP-IDF v4.3 headers from GitHub
               - Patched platform checks for hybrid builds
-              - Modified includes to use framework ESP-IDF headers
-              - Created framework_includes.h wrapper
+              - Updated include paths
               - Auto-generated by GitHub Actions run #${{ github.run_number }}
               
               Build env: ${{ env.BOARD_ENV }}
               Version: ${{ github.event.inputs.version_name }}
-              Framework-compatible Bluetooth A2DP"
+              ESP-IDF v4.3 headers integrated"
               git push origin ${{ github.event.inputs.target_branch }}
             fi
           fi
@@ -370,7 +417,7 @@ jobs:
             rm -rf .pio/libdeps/${{ env.BOARD_ENV }}/ESP32-A2DP* 2>/dev/null || true
             rm -rf .pio/libdeps/${{ env.BOARD_ENV }}/.piolibdeps* 2>/dev/null || true
             rm -f .pio/build/${{ env.BOARD_ENV }}/.pioenvs 2>/dev/null || true
-            echo "Cache cleared for retry"
+            echo "Cache cleared"
           fi
 
       - name: Retry Build with Patched Library
