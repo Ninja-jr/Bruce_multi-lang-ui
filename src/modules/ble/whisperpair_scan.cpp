@@ -1,8 +1,8 @@
 #include "whisperpair_scan.h"
+#include <globals.h>
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include <vector>
-#include <globals.h>
 
 std::vector<BLE_Device> foundDevices;
 bool scanning = false;
