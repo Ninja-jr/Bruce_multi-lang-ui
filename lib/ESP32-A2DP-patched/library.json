@@ -1,0 +1,9 @@
+{
+  "name": "ESP32-A2DP-patched",
+  "version": "1.8.8-bruce-patched",
+  "description": "ESP32-A2DP patched for Bruce firmware",
+  "keywords": ["a2dp", "bluetooth", "audio", "esp32"],
+  "authors": [{"name": "Phil Schatzmann", "maintainer": true}],
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}
