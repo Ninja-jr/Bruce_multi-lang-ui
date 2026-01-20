@@ -109,16 +109,15 @@ jobs:
         if: failure() && env.SHOULD_PATCH == 'true'
         id: check_a2dp
         run: |
-          # Try to find the header
-          HEADER=$(find . -name "BluetoothA2DPCommon.h" -type f 2>/dev/null | head -1)
-          
+          echo "=== CHECK A2DP ERROR STEP STARTING ==="
+          HEADER=$(find . -name "BluetoothA2DPCommon.h" -type f 2>/dev/null | head -1) || true
+          echo "Find command completed. HEADER='$HEADER'"
           if [ -f "$HEADER" ]; then
             echo "Found header at: $HEADER"
             echo "header_path=$HEADER" >> $GITHUB_OUTPUT
             if grep -q "#error" "$HEADER"; then
               echo "has_error=true" >> $GITHUB_OUTPUT
               echo "Header contains #error on line 33"
-              # Show the error line
               sed -n '30,36p' "$HEADER"
             else
               echo "has_error=false" >> $GITHUB_OUTPUT
@@ -128,6 +127,7 @@ jobs:
             echo "header_path=" >> $GITHUB_OUTPUT
             echo "has_error=false" >> $GITHUB_OUTPUT
           fi
+          echo "=== CHECK A2DP ERROR STEP COMPLETE ==="
 
       - name: Create Patched A2DP Library
         if: steps.check_a2dp.outputs.header_path && steps.check_a2dp.outputs.has_error == 'true' && env.SHOULD_PATCH == 'true'
