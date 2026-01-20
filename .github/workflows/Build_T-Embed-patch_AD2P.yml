@@ -125,16 +125,8 @@ jobs:
   "version": "1.8.8-bruce-patched",
   "description": "ESP32-A2DP patched for Bruce firmware",
   "keywords": ["a2dp", "bluetooth", "audio", "esp32"],
-  "authors": [
-    {
-      "name": "Phil Schatzmann",
-      "maintainer": true
-    }
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/${{ github.repository }}"
-  },
+  "authors": [{"name": "Phil Schatzmann", "maintainer": true}],
+  "repository": {"type": "git", "url": "https://github.com/${{ github.repository }}"},
   "frameworks": ["arduino"],
   "platforms": ["espressif32"],
   "headers": ["BluetoothA2DPCommon.h", "BluetoothA2DPSource.h", "BluetoothA2DPSink.h"]
