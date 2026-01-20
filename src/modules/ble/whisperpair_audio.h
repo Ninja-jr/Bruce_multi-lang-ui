@@ -1,6 +1,9 @@
 #pragma once
 #include <NimBLEDevice.h>
 
+// Forward declaration (don't include whisperpair.h to avoid circular)
+bool requireButtonHoldConfirmation(const char* message, uint32_t ms = 3000);
+
 class AudioCommandService {
 private:
     NimBLEServer* pServer;
