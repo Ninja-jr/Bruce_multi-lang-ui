@@ -10,7 +10,7 @@ extern void padprintln(const String& text);
 extern void displayMessage(const char* line1, const char* line2, const char* line3, const char* line4, uint32_t duration);
 extern bool check(int button);
 extern String keyboard(const char* initial, uint8_t maxLength, const char* prompt);
-extern int loopOptions(std::vector<Option>& options, uint8_t type, const char* title, int index = 0, bool interpreter = false);
+extern int loopOptions(std::vector<Option>& options, uint8_t type, const char* title, int index, bool interpreter);
 
 bool requireButtonHoldConfirmation(const char* message, uint32_t ms = 3000);
 void testFastPairVulnerability();
