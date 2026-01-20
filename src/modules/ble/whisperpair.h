@@ -4,7 +4,6 @@
 #include <functional>
 #include <vector>
 
-// Forward declarations for display functions (they're in globals.h)
 extern void drawMainBorderWithTitle(const char* title);
 extern void padprintln(const String& text);
 extern void displayMessage(const char* line1, const char* line2, const char* line3, const char* line4, uint32_t duration);
