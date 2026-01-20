@@ -145,9 +145,12 @@ jobs:
           
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
             PATCHED_DIR="lib/ESP32-A2DP-patched"
+            rm -rf "$PATCHED_DIR"
             mkdir -p "$PATCHED_DIR"
             
-            git clone --depth 1 https://github.com/pschatzmann/ESP32-A2DP.git "$PATCHED_DIR"
+            git clone --depth 1 --no-checkout https://github.com/pschatzmann/ESP32-A2DP.git "$PATCHED_DIR-temp"
+            mv "$PATCHED_DIR-temp"/* "$PATCHED_DIR-temp"/.??* "$PATCHED_DIR"/ 2>/dev/null || true
+            rm -rf "$PATCHED_DIR-temp"
             
             ESP_IDF_BASE="https://raw.githubusercontent.com/espressif/esp-idf/release/v4.3"
             
@@ -232,10 +235,10 @@ jobs:
             
             REQUIRED_HEADERS=()
             
-            find "$PATCHED_DIR" -name "*.h" -o -name "*.cpp" -o -name "*.c" | while read file; do
+            while IFS= read -r file; do
               grep -h '^#include[[:space:]]*["<]esp_' "$file" 2>/dev/null | \
               sed 's/^#include[[:space:]]*["<]\(esp_[^">]*\)[">].*/\1/' | \
-              while read header; do
+              while read -r header; do
                 if [[ ! " ${REQUIRED_HEADERS[@]} " =~ " ${header} " ]]; then
                   REQUIRED_HEADERS+=("$header")
                 fi
@@ -243,12 +246,12 @@ jobs:
               
               grep -h '^#include[[:space:]]*["<].*freertos' "$file" 2>/dev/null | \
               sed 's/^#include[[:space:]]*["<].*\/\([^"/]*\)[">].*/\1/' | \
-              while read header; do
+              while read -r header; do
                 if [[ "$header" == *.h ]] && [[ ! " ${REQUIRED_HEADERS[@]} " =~ " ${header} " ]]; then
                   REQUIRED_HEADERS+=("$header")
                 fi
               done
-            done
+            done < <(find "$PATCHED_DIR" -name "*.h" -o -name "*.cpp" -o -name "*.c")
             
             COMMON_HEADERS=(
               "esp_err.h"
@@ -308,7 +311,7 @@ jobs:
               sed -i '7i #endif' "$PATCHED_HEADER"
             fi
             
-            find "$PATCHED_DIR" \( -name "*.cpp" -o -name "*.c" -o -name "*.h" \) ! -path "*/esp_idf_headers/*" | while read file; do
+            while IFS= read -r file; do
               if grep -q "esp_" "$file" || grep -q "CONFIG_" "$file"; then
                 sed -i '1i #include "whisperpair_bluetooth_config.h"' "$file"
               fi
@@ -318,12 +321,12 @@ jobs:
               sed -i 's/#include[[:space:]]*["<]freertos\/\([^">]*\)[">]/#include "esp_idf_headers\/\1"/g' "$file" 2>/dev/null || true
               sed -i 's/#include[[:space:]]*["<]sdkconfig[">]/#include "whisperpair_bluetooth_config.h"/g' "$file" 2>/dev/null || true
               sed -i 's/^\([[:space:]]*\)#error.*$/\1\/\//' "$file" 2>/dev/null || true
-            done
+            done < <(find "$PATCHED_DIR" \( -name "*.cpp" -o -name "*.c" -o -name "*.h" \) ! -path "*/esp_idf_headers/*")
             
-            find "$PATCHED_DIR/esp_idf_headers" -name "*.h" | while read header; do
+            while IFS= read -r header; do
               sed -i 's/#include[[:space:]]*["<]\(esp_[^">]*\)[">]/#include "\1"/g' "$header" 2>/dev/null || true
               sed -i 's/#include[[:space:]]*["<].*\/\(esp_[^">]*\)[">]/#include "\1"/g' "$header" 2>/dev/null || true
-            done
+            done < <(find "$PATCHED_DIR/esp_idf_headers" -name "*.h")
             
             echo '{' > "$PATCHED_DIR/library.json"
             echo '  "name": "ESP32-A2DP-WhisperPair",' >> "$PATCHED_DIR/library.json"
