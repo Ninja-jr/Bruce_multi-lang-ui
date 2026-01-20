@@ -138,11 +138,6 @@ void testFastPairVulnerability() {
 void whisperPairMenu() {
     std::vector<Option> options;
     
-    options.push_back({"[?] Passive Scan", []() {
-        extern bool passiveFastPairScan(uint32_t);
-        passiveFastPairScan(30);
-    }});
-    
     options.push_back({"[-] Test Vulnerability", []() {
         testFastPairVulnerability();
     }});
@@ -184,13 +179,9 @@ void whisperPairMenu() {
         delay(3000);
     }});
     
-    options.push_back({"[!!!] Audio Hijack Test", []() {
-        displayMessage("NOT IMPLEMENTED", "", "", "", 0);
-        displayMessage("Would require:", "", "", "", 0);
-        displayMessage("1. Successful pairing", "", "", "", 0);
-        displayMessage("2. A2DP profile connect", "", "", "", 0);
-        displayMessage("3. Audio stream injection", "", "", "", 0);
-        delay(3000);
+    options.push_back({"[!!!] Audio Hijack", []() {
+        extern void audioHijackTest();
+        audioHijackTest();
     }});
     
     options.push_back({"Back", []() { returnToMenu = true; }});
