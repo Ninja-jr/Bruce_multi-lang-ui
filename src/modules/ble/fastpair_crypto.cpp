@@ -8,6 +8,11 @@ FastPairCrypto::FastPairCrypto() {
     mbedtls_ctr_drbg_init(&ctr_drbg);
     mbedtls_entropy_init(&entropy);
     
+    mbedtls_ecp_group_init(&ecdh_grp);
+    mbedtls_mpi_init(&ecdh_d);
+    mbedtls_ecp_point_init(&ecdh_Q);
+    mbedtls_mpi_init(&ecdh_z);
+    
     const char* pers = "fastpair_crypto";
     mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, 
                          (const uint8_t*)pers, strlen(pers));
@@ -18,40 +23,25 @@ FastPairCrypto::~FastPairCrypto() {
     mbedtls_aes_free(&aes_ctx);
     mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
+    
+    mbedtls_ecp_group_free(&ecdh_grp);
+    mbedtls_mpi_free(&ecdh_d);
+    mbedtls_ecp_point_free(&ecdh_Q);
+    mbedtls_mpi_free(&ecdh_z);
 }
 
 bool FastPairCrypto::generateKeyPair(uint8_t* public_key, size_t* pub_len) {
-    mbedtls_ecp_group grp;
-    mbedtls_ecp_group_init(&grp);
-    mbedtls_mpi d;
-    mbedtls_mpi_init(&d);
-    mbedtls_ecp_point Q;
-    mbedtls_ecp_point_init(&Q);
+    mbedtls_ecp_group_load(&ecdh_grp, MBEDTLS_ECP_DP_SECP256R1);
     
-    mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1);
-    
-    int ret = mbedtls_ecdh_gen_public(&grp, &d, &Q, mbedtls_ctr_drbg_random, &ctr_drbg);
-    if(ret != 0) {
-        mbedtls_ecp_group_free(&grp);
-        mbedtls_mpi_free(&d);
-        mbedtls_ecp_point_free(&Q);
-        return false;
-    }
+    int ret = mbedtls_ecdh_gen_public(&ecdh_grp, &ecdh_d, &ecdh_Q, 
+                                      mbedtls_ctr_drbg_random, &ctr_drbg);
+    if(ret != 0) return false;
     
     *pub_len = 65;
     public_key[0] = 0x04;
     size_t olen;
-    ret = mbedtls_ecp_point_write_binary(&grp, &Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
+    ret = mbedtls_ecp_point_write_binary(&ecdh_grp, &ecdh_Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
                                          &olen, public_key, *pub_len);
-    
-    mbedtls_mpi_copy(&ecdh_ctx.d, &d);
-    mbedtls_ecp_copy(&ecdh_ctx.Q, &Q);
-    mbedtls_ecp_group_copy(&ecdh_ctx.grp, &grp);
-    
-    mbedtls_ecp_group_free(&grp);
-    mbedtls_mpi_free(&d);
-    mbedtls_ecp_point_free(&Q);
-    
     return ret == 0;
 }
 
@@ -59,29 +49,18 @@ bool FastPairCrypto::computeSharedSecret(const uint8_t* peer_public, size_t peer
     mbedtls_ecp_point peer_point;
     mbedtls_ecp_point_init(&peer_point);
     
-    mbedtls_ecp_group grp;
-    mbedtls_ecp_group_init(&grp);
-    mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1);
-    
-    int ret = mbedtls_ecp_point_read_binary(&grp, &peer_point, peer_public, peer_len);
+    int ret = mbedtls_ecp_point_read_binary(&ecdh_grp, &peer_point, peer_public, peer_len);
     if(ret != 0) {
         mbedtls_ecp_point_free(&peer_point);
-        mbedtls_ecp_group_free(&grp);
         return false;
     }
     
-    mbedtls_mpi z;
-    mbedtls_mpi_init(&z);
-    
-    ret = mbedtls_ecdh_compute_shared(&grp, &z, &peer_point, &ecdh_ctx.d,
+    ret = mbedtls_ecdh_compute_shared(&ecdh_grp, &ecdh_z, &peer_point, &ecdh_d,
                                       mbedtls_ctr_drbg_random, &ctr_drbg);
     
-    mbedtls_mpi_copy(&ecdh_ctx.z, &z);
+    mbedtls_mpi_write_binary(&ecdh_z, shared_secret, 32);
     
     mbedtls_ecp_point_free(&peer_point);
-    mbedtls_mpi_free(&z);
-    mbedtls_ecp_group_free(&grp);
-    
     return ret == 0;
 }
 
@@ -90,11 +69,7 @@ bool FastPairCrypto::deriveFastPairKeys(const uint8_t* nonce, size_t nonce_len) 
     
     uint8_t input[64];
     memcpy(input, nonce, 16);
-    
-    size_t z_len = 32;
-    uint8_t z_buf[32];
-    mbedtls_mpi_write_binary(&ecdh_ctx.z, z_buf, z_len);
-    memcpy(&input[16], z_buf, 32);
+    memcpy(&input[16], shared_secret, 32);
     
     uint8_t derived[32];
     mbedtls_aes_setkey_enc(&aes_ctx, &input[16], 256);
@@ -131,6 +106,11 @@ void FastPairCrypto::decryptCTR(uint8_t* data, size_t len, const uint8_t* key, c
     encryptCTR(data, len, key, nonce);
 }
 
+const uint8_t* FastPairCrypto::getSharedSecret() {
+    mbedtls_mpi_write_binary(&ecdh_z, shared_secret, 32);
+    return shared_secret;
+}
+
 void FastPairCrypto::generateAccountKey() {
     mbedtls_ctr_drbg_random(&ctr_drbg, account_key, 16);
 }
@@ -157,6 +137,16 @@ void FastPairCrypto::benchmark() {
     uint64_t secret_time = esp_timer_get_time() - start;
     Serial.printf("[Crypto] Shared Secret: %.2f ms\n", secret_time / 1000.0);
     
-    Serial.printf("[Crypto] Total: %.2f ms\n", (keygen_time + secret_time) / 1000.0);
+    start = esp_timer_get_time();
+    uint8_t nonce[16] = {0};
+    esp_fill_random(nonce, 16);
+    if(!deriveFastPairKeys(nonce, 16)) {
+        Serial.println("[Crypto] Key derivation failed");
+        return;
+    }
+    uint64_t derive_time = esp_timer_get_time() - start;
+    
+    Serial.printf("[Crypto] Key Derivation: %.2f ms\n", derive_time / 1000.0);
+    Serial.printf("[Crypto] Total: %.2f ms\n", (keygen_time + secret_time + derive_time) / 1000.0);
     Serial.printf("[Crypto] Free Heap: %ld bytes\n", ESP.getFreeHeap());
 }
