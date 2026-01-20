@@ -27,7 +27,7 @@
 #if 1 // [PATCHED] Force ARDUINO_ARCH_ESP32
 #  include "sdkconfig.h"
 #endif
-#if defined(CONFIG_IDF_TARGET_ESP32) 
+#if 1 // [PATCHED] Force CONFIG_IDF_TARGET_ESP32 
 #  define IS_VALID_PLATFORM true
 #else
 #  error "Please read the ESP32-A2DP Wiki about the supported Platforms!"
@@ -86,7 +86,7 @@ using namespace esp_i2s;
 #endif
 
 #if !defined(ESP_IDF_VERSION)
-#error Unsupported ESP32 Version: Upgrade the ESP32 version in the Board Manager
+// [PATCHED] #error "Platform check disabled"
 #endif
 
 // Support for old and new IDF version
