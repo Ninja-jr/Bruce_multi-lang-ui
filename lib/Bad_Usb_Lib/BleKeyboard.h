@@ -9,7 +9,7 @@
 #if __has_include(<NimBLEExtAdvertising.h>)
 #define NIMBLE_V2_PLUS 1
 #endif
-#include "NimBLECharacteristic.h"
+#include <NimBLECharacteristic.h>
 #include <NimBLEHIDDevice.h>
 #ifdef NIMBLE_V2_PLUS
 #include "NimBLEAdvertising.h"
