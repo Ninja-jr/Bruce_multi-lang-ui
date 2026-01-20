@@ -36,17 +36,17 @@ void BleMenu::optionsMenu() {
 #endif
     options.push_back({"BLE Keyboard", [=]() { ducky_keyboard(hid_ble, true); }});
     options.push_back({"BLE Spam", [=]() { spamMenu(); }});
-    
+
 #if !defined(LITE_VERSION)
     options.push_back({"WhisperPair", [=]() { whisperPairMenu(); }});
 #endif
-    
+
 #if !defined(LITE_VERSION)
     options.push_back({"Ninebot", [=]() { BLENinebot(); }});
 #endif
     addOptionToMainMenu();
 
-    loopOptions(options, MENU_TYPE_SUBMENU, "Bluetooth");
+    loopOptions(options, MENU_TYPE_SUBMENU, "Bluetooth", 0, false);
 }
 
 void BleMenu::drawIcon(float scale) {
