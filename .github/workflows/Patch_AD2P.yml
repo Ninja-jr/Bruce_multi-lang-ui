@@ -166,8 +166,13 @@ jobs:
           HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
           
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
-            sed -i 's|pschatzmann/ESP32-A2DP.*|lib/ESP32-A2DP-patched|g' platformio.ini
-            sed -i 's|https://github.com/pschatzmann/ESP32-A2DP.*|lib/ESP32-A2DP-patched|g' platformio.ini
+            cp platformio.ini platformio.ini.backup
+            
+            grep -v "ESP32-A2DP" platformio.ini > platformio.ini.tmp
+            mv platformio.ini.tmp platformio.ini
+            
+            sed -i '/^lib_deps =/a\    lib/ESP32-A2DP-patched' platformio.ini
+            
             echo "Updated platformio.ini to use local patched library"
           fi
 
@@ -182,6 +187,9 @@ jobs:
             echo ""
             echo "Checking for patched library reference:"
             grep -n "lib/ESP32-A2DP-patched" platformio.ini || echo "Patched library reference not found"
+            echo ""
+            echo "Checking for ESP32-A2DP references:"
+            grep -n "ESP32-A2DP" platformio.ini || echo "No ESP32-A2DP references found"
           fi
 
       - name: Commit and Push Patched Library
@@ -207,6 +215,19 @@ jobs:
               Version: ${{ github.event.inputs.version_name }}"
               git push origin ${{ github.event.inputs.target_branch }}
             fi
+          fi
+
+      - name: Clear PlatformIO Cache for Retry
+        if: failure() && env.SHOULD_PATCH == 'true'
+        run: |
+          HEADER_PATH=$(cat header_path.txt 2>/dev/null || echo "")
+          HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
+          
+          if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
+            rm -rf .pio/libdeps/${{ env.BOARD_ENV }}/ESP32-A2DP* 2>/dev/null || true
+            rm -rf .pio/libdeps/${{ env.BOARD_ENV }}/.piolibdeps* 2>/dev/null || true
+            rm -f .pio/build/${{ env.BOARD_ENV }}/.pioenvs 2>/dev/null || true
+            echo "Cache cleared for retry"
           fi
 
       - name: Retry Build with Patched Library
