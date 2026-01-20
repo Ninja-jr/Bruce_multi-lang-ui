@@ -81,10 +81,11 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
     packet[1] = 0x11;
     
     uint8_t targetBytes[6];
-    const uint8_t* addr = target.getNative();
-    for(int i = 0; i < 6; i++) {
-        targetBytes[5-i] = addr[i];
-    }
+    String macStr = target.toString();
+    sscanf(macStr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+           &targetBytes[5], &targetBytes[4], &targetBytes[3],
+           &targetBytes[2], &targetBytes[1], &targetBytes[0]);
+    
     memcpy(&packet[2], targetBytes, 6);
     
     esp_fill_random(&packet[8], 8);
