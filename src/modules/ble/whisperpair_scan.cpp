@@ -1,7 +1,6 @@
 #include "whisperpair_scan.h"
 #include "core/display.h"
 #include "core/mykeyboard.h"
-#include "whisperpair.h"
 #include <vector>
 #include <globals.h>
 
