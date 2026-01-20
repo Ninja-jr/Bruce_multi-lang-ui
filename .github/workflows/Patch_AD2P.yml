@@ -1,3 +1,121 @@
+name: Build_T-Embed-Patch A2DP
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to build from'
+        required: true
+        default: 'dev'
+        type: string
+      version_name:
+        description: 'Version name (Ninja-Jr 1.0, Ninja-Jr dev, etc)'
+        required: true
+        default: 'Ninja-Jr dev'
+        type: string
+      auto_patch:
+        description: 'Auto-patch A2DP library on failure?'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  compile_sketch:
+    name: Build lilygo-t-embed-cc1101 with Auto-Patch
+    runs-on: ubuntu-latest
+    env:
+      BOARD_ENV: "lilygo-t-embed-cc1101"
+      SHOULD_PATCH: ${{ github.event.inputs.auto_patch }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+          token: ${{ secrets.SYNC_PAT }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib libc6-dev-i386
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install requests esptool intelhex
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: Bruce-platformio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: Bruce-platformio-
+
+      - name: Restore PIO Build Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/.pio
+          key: Bruce-pio-${{ env.BOARD_ENV }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            Bruce-pio-${{ env.BOARD_ENV }}-
+
+      - name: Install PlatformIO and configure version
+        run: |
+          pip install platformio
+          sed -i "s/-DBRUCE_VERSION=/-DBRUCE_VERSION='\"${{ github.event.inputs.version_name }}\"' ; /g" ./platformio.ini
+          GIT_HASH=$(git describe --always --dirty 2>/dev/null || echo "unknown")
+          sed -i "s|-DGIT_COMMIT_HASH='\"Homebrew\"'|!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"${GIT_HASH}\\\\\\\\\"'|g" ./platformio.ini
+
+      - name: Compile for lilygo-t-embed-cc1101
+        id: compile
+        run: |
+          platformio run -e ${{ env.BOARD_ENV }}
+
+      - name: Debug A2DP Library Location
+        if: failure() && env.SHOULD_PATCH == 'true'
+        run: |
+          echo "=== DEBUG: Current directory ==="
+          pwd
+          echo ""
+          echo "=== DEBUG: Looking for ESP32-A2DP ==="
+          find . -name "ESP32-A2DP" -type d 2>/dev/null
+          echo ""
+          echo "=== DEBUG: Looking for BluetoothA2DPCommon.h ==="
+          find . -name "BluetoothA2DPCommon.h" -type f 2>/dev/null | head -5
+
+      - name: Check A2DP Error
+        if: failure() && env.SHOULD_PATCH == 'true'
+        id: check_a2dp
+        run: |
+          HEADER=$(find . -name "BluetoothA2DPCommon.h" -type f 2>/dev/null | head -1) || true
+          if [ -f "$HEADER" ]; then
+            echo "$HEADER" > header_path.txt
+            if grep -q "#error" "$HEADER"; then
+              echo "true" > has_error.txt
+            else
+              echo "false" > has_error.txt
+            fi
+          else
+            echo "" > header_path.txt
+            echo "false" > has_error.txt
+          fi
+
       - name: Create Patched A2DP Library
         if: failure() && env.SHOULD_PATCH == 'true'
         run: |
@@ -275,4 +393,122 @@ EOF
             echo ""
             echo "🎯 Ready for WhisperPair with REAL Bluetooth audio! 🚀"
             
+          fi
+
+      - name: Update platformio.ini with Patched Library
+        if: failure() && env.SHOULD_PATCH == 'true'
+        run: |
+          HEADER_PATH=$(cat header_path.txt 2>/dev/null || echo "")
+          HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
+          
+          if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
+            cp platformio.ini platformio.ini.backup
+            
+            grep -v "ESP32-A2DP" platformio.ini > platformio.ini.tmp
+            mv platformio.ini.tmp platformio.ini
+            
+            sed -i '/^lib_deps =/a\    lib/ESP32-A2DP-patched' platformio.ini
+            
+            echo "Updated platformio.ini to use local patched library"
+          fi
+
+      - name: Verify platformio.ini Update
+        if: failure() && env.SHOULD_PATCH == 'true'
+        run: |
+          HEADER_PATH=$(cat header_path.txt 2>/dev/null || echo "")
+          HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
+          
+          if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
+            echo "=== Verifying platformio.ini update ==="
+            echo ""
+            echo "Checking for patched library reference:"
+            grep -n "lib/ESP32-A2DP-patched" platformio.ini || echo "Patched library reference not found"
+            echo ""
+            echo "Checking for ESP32-A2DP references:"
+            grep -n "ESP32-A2DP" platformio.ini || echo "No ESP32-A2DP references found"
+          fi
+
+      - name: Commit and Push Patched Library
+        if: failure() && env.SHOULD_PATCH == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.SYNC_PAT }}
+        run: |
+          HEADER_PATH=$(cat header_path.txt 2>/dev/null || echo "")
+          HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
+          
+          if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add lib/ESP32-A2DP-patched/
+            git add platformio.ini
+            if ! git diff --cached --quiet; then
+              git commit -m "🔧 Auto-patch: Add patched ESP32-A2DP library with Bluetooth stack
+              
+              Smart auto-patching for Bruce firmware hybrid builds:
+              - Patched platform detection checks
+              - Downloaded Bluetooth stack from ESP-IDF v4.3
+              - Integrated A2DP with real Bluetooth implementation
+              - Auto-generated by GitHub Actions run #${{ github.run_number }}
+              
+              Build env: ${{ env.BOARD_ENV }}
+              Version: ${{ github.event.inputs.version_name }}
+              WhisperPair ready with Bluetooth audio support"
+              git push origin ${{ github.event.inputs.target_branch }}
+            fi
+          fi
+
+      - name: Clear PlatformIO Cache for Retry
+        if: failure() && env.SHOULD_PATCH == 'true'
+        run: |
+          HEADER_PATH=$(cat header_path.txt 2>/dev/null || echo "")
+          HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
+          
+          if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
+            rm -rf .pio/libdeps/${{ env.BOARD_ENV }}/ESP32-A2DP* 2>/dev/null || true
+            rm -rf .pio/libdeps/${{ env.BOARD_ENV }}/.piolibdeps* 2>/dev/null || true
+            rm -f .pio/build/${{ env.BOARD_ENV }}/.pioenvs 2>/dev/null || true
+            echo "Cache cleared for retry"
+          fi
+
+      - name: Retry Build with Patched Library
+        if: failure() && env.SHOULD_PATCH == 'true'
+        run: |
+          HEADER_PATH=$(cat header_path.txt 2>/dev/null || echo "")
+          HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
+          
+          if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
+            echo "Starting retry build with patched library"
+            platformio run -e ${{ env.BOARD_ENV }}
+          fi
+
+      - name: Save PIO Build Cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.pio
+          key: Bruce-pio-${{ env.BOARD_ENV }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload Binary Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bruce-${{ env.BOARD_ENV }}-${{ github.event.inputs.version_name }}
+          path: |
+            Bruce-*.bin
+            Bruce-*.elf
+            Bruce-*.map
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Display Build Info
+        if: always()
+        run: |
+          if ls Bruce-*.bin 1> /dev/null 2>&1; then
+            echo "Build successful!"
+            echo "Environment: ${{ env.BOARD_ENV }}"
+            echo "Version: ${{ github.event.inputs.version_name }}"
+            ls -la Bruce-*.* 2>/dev/null || echo "No Bruce files"
+          else
+            echo "Build failed"
+            echo "A2DP patching attempted: ${{ env.SHOULD_PATCH }}"
           fi
