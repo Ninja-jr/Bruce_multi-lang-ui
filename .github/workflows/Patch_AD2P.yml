@@ -109,25 +109,18 @@ jobs:
         if: failure() && env.SHOULD_PATCH == 'true'
         id: check_a2dp
         run: |
-          echo "=== CHECK A2DP ERROR STEP STARTING ==="
           HEADER=$(find . -name "BluetoothA2DPCommon.h" -type f 2>/dev/null | head -1) || true
-          echo "Find command completed. HEADER='$HEADER'"
           if [ -f "$HEADER" ]; then
-            echo "Found header at: $HEADER"
             echo "$HEADER" > header_path.txt
             if grep -q "#error" "$HEADER"; then
               echo "true" > has_error.txt
-              echo "Header contains #error on line 33"
-              sed -n '30,36p' "$HEADER"
             else
               echo "false" > has_error.txt
             fi
           else
-            echo "No header file found anywhere!"
             echo "" > header_path.txt
             echo "false" > has_error.txt
           fi
-          echo "=== CHECK A2DP ERROR STEP COMPLETE ==="
 
       - name: Create Patched A2DP Library
         if: failure() && env.SHOULD_PATCH == 'true'
@@ -135,11 +128,7 @@ jobs:
           HEADER_PATH=$(cat header_path.txt 2>/dev/null || echo "")
           HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
           
-          echo "HEADER_PATH='$HEADER_PATH'"
-          echo "HAS_ERROR='$HAS_ERROR'"
-          
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
-            echo "Patching library..."
             ORIG_HEADER="$HEADER_PATH"
             ORIG_DIR=$(dirname "$ORIG_HEADER")
             PATCHED_DIR="lib/ESP32-A2DP-patched"
@@ -161,8 +150,6 @@ jobs:
             echo '  "frameworks": ["arduino"],' >> "$PATCHED_DIR/library.json"
             echo '  "platforms": ["espressif32"]' >> "$PATCHED_DIR/library.json"
             echo '}' >> "$PATCHED_DIR/library.json"
-          else
-            echo "Skipping patching: HEADER_PATH empty or HAS_ERROR not true"
           fi
 
       - name: Update platformio.ini with Patched Library
@@ -172,13 +159,10 @@ jobs:
           HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
           
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
-            echo "Updating platformio.ini..."
             cp platformio.ini platformio.ini.backup
-            sed -i 's|pschatzmann/ESP32-A2DP.*|./lib/ESP32-A2DP-patched|g' platformio.ini
-            sed -i 's|https://github.com/pschatzmann/ESP32-A2DP.*|./lib/ESP32-A2DP-patched|g' platformio.ini
-            sed -i 's|pschatzmann/esp32-a2dp.*|./lib/ESP32-A2DP-patched|g' platformio.ini
-          else
-            echo "Skipping platformio.ini update"
+            sed -i 's|pschatzmann/ESP32-A2DP.*|lib/ESP32-A2DP-patched|g' platformio.ini
+            sed -i 's|https://github.com/pschatzmann/ESP32-A2DP.*|lib/ESP32-A2DP-patched|g' platformio.ini
+            sed -i 's|pschatzmann/esp32-a2dp.*|lib/ESP32-A2DP-patched|g' platformio.ini
           fi
 
       - name: Commit and Push Patched Library
@@ -190,11 +174,8 @@ jobs:
           HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
           
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
-            echo "Committing patched library..."
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            CURRENT_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-            git checkout "$CURRENT_BRANCH"
             git add lib/ESP32-A2DP-patched/
             git add platformio.ini
             if ! git diff --cached --quiet; then
@@ -206,12 +187,8 @@ jobs:
               
               Build env: ${{ env.BOARD_ENV }}
               Version: ${{ github.event.inputs.version_name }}"
-              git push origin "$CURRENT_BRANCH"
-            else
-              echo "No changes to commit"
+              git push origin ${{ github.event.inputs.target_branch }}
             fi
-          else
-            echo "Skipping commit"
           fi
 
       - name: Retry Build with Patched Library
@@ -221,10 +198,7 @@ jobs:
           HAS_ERROR=$(cat has_error.txt 2>/dev/null || echo "false")
           
           if [ -n "$HEADER_PATH" ] && [ "$HAS_ERROR" = "true" ]; then
-            echo "Retrying build with patched library..."
             platformio run -e ${{ env.BOARD_ENV }}
-          else
-            echo "Skipping retry build"
           fi
 
       - name: Save PIO Build Cache
