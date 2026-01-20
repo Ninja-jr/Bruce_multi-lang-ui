@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
+// Function declarations
 bool requireButtonHoldConfirmation(const char* message, uint32_t ms = 3000);
 void testFastPairVulnerability();
 bool attemptKeyBasedPairing(NimBLEAddress target);
