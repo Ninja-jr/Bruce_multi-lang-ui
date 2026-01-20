@@ -6,7 +6,7 @@
 #include "modules/ble/ble_ninebot.h"
 #include "modules/ble/ble_spam.h"
 #if !defined(LITE_VERSION)
-#include "modules/ble/whisperpair_danger.h"
+#include "modules/ble/whisperpair.h"
 #endif
 #include <globals.h>
 
