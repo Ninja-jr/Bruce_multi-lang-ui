@@ -5,6 +5,9 @@
 #include "modules/ble/ble_common.h"
 #include "modules/ble/ble_ninebot.h"
 #include "modules/ble/ble_spam.h"
+#if !defined(LITE_VERSION)
+#include "modules/ble/whisperpair_danger.h"
+#endif
 #include <globals.h>
 
 void BleMenu::optionsMenu() {
@@ -13,16 +16,16 @@ void BleMenu::optionsMenu() {
     if (BLEConnected) {
         options.push_back({"Disconnect", [=]() {
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
-                               esp_bt_controller_deinit();
+            esp_bt_controller_deinit();
 #else
-                               BLEDevice::deinit();
+            BLEDevice::deinit();
 #endif
-                               BLEConnected = false;
-                               delete hid_ble;
-                               hid_ble = nullptr;
-                               if (_Ask_for_restart == 1)
-                                   _Ask_for_restart = 2;
-                           }});
+            BLEConnected = false;
+            delete hid_ble;
+            hid_ble = nullptr;
+            if (_Ask_for_restart == 1)
+                _Ask_for_restart = 2;
+        }});
     }
 
     options.push_back({"Media Cmds", [=]() { MediaCommands(hid_ble, true); }});
@@ -33,6 +36,11 @@ void BleMenu::optionsMenu() {
 #endif
     options.push_back({"BLE Keyboard", [=]() { ducky_keyboard(hid_ble, true); }});
     options.push_back({"BLE Spam", [=]() { spamMenu(); }});
+    
+#if !defined(LITE_VERSION)
+    options.push_back({"WhisperPair", [=]() { whisperPairMenu(); }});
+#endif
+    
 #if !defined(LITE_VERSION)
     options.push_back({"Ninebot", [=]() { BLENinebot(); }});
 #endif
