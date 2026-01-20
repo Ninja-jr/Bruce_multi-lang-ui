@@ -1,3 +1,33 @@
+// ESP32-A2DP with complete Bluetooth stack
+#pragma once
+
+// Enable Bluetooth
+#define CONFIG_BT_ENABLED 1
+#define CONFIG_CLASSIC_BT_ENABLED 1
+#define CONFIG_BT_A2DP_ENABLED 1
+#define CONFIG_BT_AVRC_ENABLED 1
+
+// Include Bluetooth headers first
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "sdkconfig.h"
+#include "esp_idf_version.h"
+#include "esp_err.h"
+#include "esp_bt.h"
+#include "esp_bt_defs.h"
+#include "esp_bt_main.h"
+#include "esp_bt_device.h"
+#include "esp_a2dp_api.h"
+#include "esp_avrc_api.h"
+#include "esp_gap_bt_api.h"
+
+#ifdef __cplusplus
+}
+#endif
+
+// Original A2DP content
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -21,7 +51,6 @@
  * @copyright GPLv3
  */
 
-#pragma once
 
 // Compile only for ESP32
 #if 1 // [PATCHED] Force ARDUINO_ARCH_ESP32
@@ -54,7 +83,6 @@ using namespace esp_i2s;
 
 #include <vector>
 
-#include "esp_idf_version.h"
 #include "freertos/FreeRTOS.h"  // needed for ESP Arduino < 2.0
 #include "freertos/FreeRTOSConfig.h"
 #include "freertos/queue.h"
@@ -66,15 +94,6 @@ using namespace esp_i2s;
 #include "xtensa_api.h"
 #endif
 #include "A2DPVolumeControl.h"
-#include "esp_a2dp_api.h"
-#include "esp_avrc_api.h"
-#include "esp_bt.h"
-#include "esp_bt_device.h"
-#include "esp_bt_main.h"
-#include "esp_gap_bt_api.h"
-#include "esp_spp_api.h"
-#include "esp_task_wdt.h"
-#include "esp_timer.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -82,7 +101,6 @@ using namespace esp_i2s;
 #include "esp32-hal-bt.h"
 #include "esp32-hal-log.h"
 #else
-#include "esp_log.h"
 #endif
 
 #if !defined(ESP_IDF_VERSION)

@@ -1,9 +1,9 @@
 {
-  "name": "ESP32-A2DP-Full-Bluetooth",
-  "version": "1.8.8-auto-download",
-  "description": "ESP32-A2DP with auto-downloaded Bluetooth stack from ESP-IDF v4.3",
-  "keywords": ["a2dp", "bluetooth", "audio", "whisperpair", "auto-download"],
-  "authors": [{"name": "ESP32-A2DP Auto-Patcher", "maintainer": true}],
+  "name": "ESP32-A2DP-WhisperPair",
+  "version": "1.8.8-hybrid",
+  "description": "ESP32-A2DP patched for hybrid Arduino/IDF with WhisperPair",
+  "keywords": ["a2dp", "bluetooth", "audio", "whisperpair"],
+  "authors": [{"name": "Bruce-Auto-Patcher", "maintainer": true}],
   "frameworks": ["arduino"],
   "platforms": ["espressif32"],
   "build": {
@@ -12,7 +12,15 @@
       "-DCONFIG_CLASSIC_BT_ENABLED=1",
       "-DCONFIG_BT_A2DP_ENABLED=1",
       "-DCONFIG_BT_AVRC_ENABLED=1",
-      "-DCONFIG_BT_SSP_ENABLED=1"
-    ]
+      "-DCONFIG_BT_SSP_ENABLED=1",
+      "-DIDF_VER=\\\"4.3.7\\\"",
+      "-DconfigNUMBER_OF_CORES=2",
+      "-DconfigMAX_TASK_NAME_LEN=16",
+      "-DconfigTASK_NOTIFICATION_ARRAY_ENTRIES=1",
+      "-Isrc",
+      "-Iinclude"
+    ],
+    "srcDir": ".",
+    "includeDir": "."
   }
 }

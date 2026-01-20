@@ -1,5 +1,28 @@
-// ESP32-A2DP with complete Bluetooth stack
+// ESP32-A2DP with minimal dependencies
 #pragma once
+
+#if !defined(ARDUINO_ARCH_ESP32)
+#define ARDUINO_ARCH_ESP32 1
+#endif
+
+#if !defined(CONFIG_IDF_TARGET_ESP32)
+#define CONFIG_IDF_TARGET_ESP32 1
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "sdkconfig.h"
+#include "esp_err.h"
+#include "esp_a2dp_api.h"
+#include "esp_avrc_api.h"
+
+#ifdef __cplusplus
+}
+#endif
+
+// ESP32-A2DP with complete Bluetooth stack
 
 // Enable Bluetooth
 #define CONFIG_BT_ENABLED 1
@@ -12,16 +35,6 @@
 extern "C" {
 #endif
 
-#include "sdkconfig.h"
-#include "esp_idf_version.h"
-#include "esp_err.h"
-#include "esp_bt.h"
-#include "esp_bt_defs.h"
-#include "esp_bt_main.h"
-#include "esp_bt_device.h"
-#include "esp_a2dp_api.h"
-#include "esp_avrc_api.h"
-#include "esp_gap_bt_api.h"
 
 #ifdef __cplusplus
 }
@@ -53,10 +66,8 @@ extern "C" {
 
 
 // Compile only for ESP32
-#if 1 // [PATCHED] Force ARDUINO_ARCH_ESP32
 #  include "sdkconfig.h"
 #endif
-#if 1 // [PATCHED] Force CONFIG_IDF_TARGET_ESP32 
 #  define IS_VALID_PLATFORM true
 #else
 #  error "Please read the ESP32-A2DP Wiki about the supported Platforms!"
@@ -97,14 +108,12 @@ using namespace esp_i2s;
 #include "nvs.h"
 #include "nvs_flash.h"
 
-#if 1 // [PATCHED] Force ARDUINO_ARCH_ESP32
 #include "esp32-hal-bt.h"
 #include "esp32-hal-log.h"
 #else
 #endif
 
 #if !defined(ESP_IDF_VERSION)
-// [PATCHED] #error "Platform check disabled"
 #endif
 
 // Support for old and new IDF version
