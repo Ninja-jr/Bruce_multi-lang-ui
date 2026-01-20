@@ -1,199 +1,56 @@
-name: Build_T-Embed-Patch A2DP
+name: Auto Sync Bruce Branches
 
 on:
+  schedule:
+    - cron: '0 3 * * 1,3,5'
   workflow_dispatch:
-    inputs:
-      target_branch:
-        description: 'Branch to build from'
-        required: true
-        default: 'dev'
-        type: string
-      version_name:
-        description: 'Version name (Ninja-Jr 1.0, Ninja-Jr dev, etc)'
-        required: true
-        default: 'Ninja-Jr dev'
-        type: string
-      auto_patch:
-        description: 'Auto-patch A2DP library on failure?'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
+
+permissions:
+  contents: write
 
 jobs:
-  compile_sketch:
-    name: Build lilygo-t-embed-cc1101 with Auto-Patch
+  sync-branches:
     runs-on: ubuntu-latest
-    env:
-      BOARD_ENV: "lilygo-t-embed-cc1101"
-      SHOULD_PATCH: ${{ github.event.inputs.auto_patch }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.target_branch }}
           token: ${{ secrets.SYNC_PAT }}
           fetch-depth: 0
+          submodules: false
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Install build deps
+      - name: Configure Git
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-multilib libc6-dev-i386
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install dependencies
+      - name: Add upstream remote
         run: |
-          pip install requests esptool intelhex
+          git remote add upstream https://github.com/PR3Y/Bruce.git 2>/dev/null || git remote set-url upstream https://github.com/PR3Y/Bruce.git
+          git fetch upstream --tags --prune
 
-      - name: Cache PlatformIO
-        uses: actions/cache@v4
-        with:
-          path: ~/.platformio
-          key: Bruce-platformio-${{ hashFiles('**/platformio.ini') }}
-          restore-keys: Bruce-platformio-
-
-      - name: Restore PIO Build Cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ github.workspace }}/.pio
-          key: Bruce-pio-${{ env.BOARD_ENV }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            Bruce-pio-${{ env.BOARD_ENV }}-
-
-      - name: Install PlatformIO and configure version
+      - name: Sync dev and main branches
         run: |
-          pip install platformio
-          sed -i "s/-DBRUCE_VERSION=/-DBRUCE_VERSION='\"${{ github.event.inputs.version_name }}\"' ; /g" ./platformio.ini
-          GIT_HASH=$(git describe --always --dirty 2>/dev/null || echo "unknown")
-          sed -i "s|-DGIT_COMMIT_HASH='\"Homebrew\"'|!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"${GIT_HASH}\\\\\\\\\"'|g" ./platformio.ini
-
-      - name: Compile for lilygo-t-embed-cc1101
-        id: compile
-        run: |
-          platformio run -e ${{ env.BOARD_ENV }}
-
-      - name: Check A2DP Error
-        if: failure() && env.SHOULD_PATCH == 'true'
-        id: check_a2dp
-        run: |
-          HEADER=".pio/libdeps/${{ env.BOARD_ENV }}/ESP32-A2DP/src/BluetoothA2DPCommon.h"
-          if [ -f "$HEADER" ]; then
-            echo "header_path=$HEADER" >> $GITHUB_OUTPUT
-            if grep -q "#error" "$HEADER"; then
-              echo "has_error=true" >> $GITHUB_OUTPUT
-            else
-              echo "has_error=false" >> $GITHUB_OUTPUT
+          sync_branch() {
+            local BRANCH_NAME="$1"
+            git fetch origin "$BRANCH_NAME"
+            git checkout "$BRANCH_NAME" 2>/dev/null || git checkout -b "$BRANCH_NAME" --track origin/"$BRANCH_NAME"
+            git fetch upstream "$BRANCH_NAME"
+            if git diff --quiet "$BRANCH_NAME" upstream/"$BRANCH_NAME" -- . ':!.github/workflows/'; then
+              echo "No changes."
+              return 0
             fi
-          else
-            echo "header_path=" >> $GITHUB_OUTPUT
-            echo "has_error=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create Patched A2DP Library
-        if: steps.check_a2dp.outputs.header_path && steps.check_a2dp.outputs.has_error == 'true' && env.SHOULD_PATCH == 'true'
-        run: |
-          ORIG_HEADER="${{ steps.check_a2dp.outputs.header_path }}"
-          ORIG_DIR=$(dirname "$ORIG_HEADER")
-          PATCHED_DIR="lib/ESP32-A2DP-patched"
-          mkdir -p "$PATCHED_DIR/src"
-          cp -r "$ORIG_DIR"/* "$PATCHED_DIR/src/" 2>/dev/null || true
-          PATCHED_HEADER="$PATCHED_DIR/src/BluetoothA2DPCommon.h"
-          if [ -f "$PATCHED_HEADER" ]; then
-            cp "$PATCHED_HEADER" "$PATCHED_HEADER.bak"
-            sed -i '33s/#error.*$/\/\/ [PATCHED] #error "Platform check disabled"/' "$PATCHED_HEADER" 2>/dev/null || true
-            sed -i 's/#if defined(ARDUINO_ARCH_ESP32)/#if 1 \/\/ [PATCHED] Force platform/' "$PATCHED_HEADER" 2>/dev/null || true
-            sed -i 's/#ifdef ARDUINO/#if 1 \/\/ [PATCHED] Force ARDUINO/' "$PATCHED_HEADER" 2>/dev/null || true
-          fi
-          echo '{' > "$PATCHED_DIR/library.json"
-          echo '  "name": "ESP32-A2DP-patched",' >> "$PATCHED_DIR/library.json"
-          echo '  "version": "1.8.8-bruce-patched",' >> "$PATCHED_DIR/library.json"
-          echo '  "description": "ESP32-A2DP patched for Bruce firmware",' >> "$PATCHED_DIR/library.json"
-          echo '  "keywords": ["a2dp", "bluetooth", "audio", "esp32"],' >> "$PATCHED_DIR/library.json"
-          echo '  "authors": [{"name": "Phil Schatzmann", "maintainer": true}],' >> "$PATCHED_DIR/library.json"
-          echo '  "frameworks": ["arduino"],' >> "$PATCHED_DIR/library.json"
-          echo '  "platforms": ["espressif32"]' >> "$PATCHED_DIR/library.json"
-          echo '}' >> "$PATCHED_DIR/library.json"
-
-      - name: Update platformio.ini with Patched Library
-        if: steps.check_a2dp.outputs.header_path && steps.check_a2dp.outputs.has_error == 'true' && env.SHOULD_PATCH == 'true'
-        run: |
-          cp platformio.ini platformio.ini.backup
-          sed -i 's|pschatzmann/ESP32-A2DP.*|./lib/ESP32-A2DP-patched|g' platformio.ini
-          sed -i 's|https://github.com/pschatzmann/ESP32-A2DP.*|./lib/ESP32-A2DP-patched|g' platformio.ini
-          sed -i 's|pschatzmann/esp32-a2dp.*|./lib/ESP32-A2DP-patched|g' platformio.ini
-
-      - name: Commit and Push Patched Library
-        if: steps.check_a2dp.outputs.header_path && steps.check_a2dp.outputs.has_error == 'true' && env.SHOULD_PATCH == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.SYNC_PAT }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          CURRENT_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-          git checkout "$CURRENT_BRANCH"
-          git add lib/ESP32-A2DP-patched/
-          git add platformio.ini
-          if ! git diff --cached --quiet; then
-            git commit -m "🔧 Auto-patch: Add patched ESP32-A2DP library
-            
-            Platform detection patched for Bruce firmware
-            - Disabled unsupported platform error
-            - Auto-generated by GitHub Actions run #${{ github.run_number }}
-            
-            Build env: ${{ env.BOARD_ENV }}
-            Version: ${{ github.event.inputs.version_name }}"
-            git push origin "$CURRENT_BRANCH"
-          fi
-
-      - name: Retry Build with Patched Library
-        if: steps.check_a2dp.outputs.header_path && steps.check_a2dp.outputs.has_error == 'true' && env.SHOULD_PATCH == 'true'
-        run: |
-          platformio run -e ${{ env.BOARD_ENV }}
-
-      - name: Save PIO Build Cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ github.workspace }}/.pio
-          key: Bruce-pio-${{ env.BOARD_ENV }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Upload Binary Artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Bruce-${{ env.BOARD_ENV }}-${{ github.event.inputs.version_name }}
-          path: |
-            Bruce-*.bin
-            Bruce-*.elf
-            Bruce-*.map
-          retention-days: 30
-          if-no-files-found: error
-
-      - name: Display Build Info
-        if: always()
-        run: |
-          if ls Bruce-*.bin 1> /dev/null 2>&1; then
-            echo "Build successful!"
-            echo "Environment: ${{ env.BOARD_ENV }}"
-            echo "Version: ${{ github.event.inputs.version_name }}"
-            echo "Git Hash: $(git describe --always --dirty 2>/dev/null || echo 'unknown')"
-            ls -la Bruce-*.* 2>/dev/null || echo "No Bruce files"
-          else
-            echo "Build failed"
-            echo "A2DP patching attempted: ${{ env.SHOULD_PATCH }}"
-          fi
+            git merge --no-edit --no-ff upstream/"$BRANCH_NAME" -m "chore: sync with upstream $(date +'%Y-%m-%d') [skip ci]" || true
+            if [ "$BRANCH_NAME" = "dev" ]; then
+              git checkout "$BRANCH_NAME" -- "src/modules/rf/rf_jammer.cpp" 2>/dev/null || true
+              git checkout "$BRANCH_NAME" -- "src/modules/NRF24/nrf_jammer.cpp" 2>/dev/null || true
+            fi
+            git checkout "$BRANCH_NAME" -- .github/workflows/ 2>/dev/null || true
+            if ! git diff --quiet origin/"$BRANCH_NAME" "$BRANCH_NAME"; then
+              git push origin "$BRANCH_NAME" --force-with-lease
+            else
+              echo "No new changes."
+            fi
+          }
+          sync_branch "dev"
+          sync_branch "main"
