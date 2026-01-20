@@ -1,5 +1,6 @@
 #include "fastpair_crypto.h"
 #include <esp_timer.h>
+#include <Arduino.h>
 
 FastPairCrypto::FastPairCrypto() {
     mbedtls_ecdh_init(&ecdh_ctx);
@@ -20,10 +21,18 @@ FastPairCrypto::~FastPairCrypto() {
 }
 
 bool FastPairCrypto::generateKeyPair(uint8_t* public_key, size_t* pub_len) {
-    int ret = mbedtls_ecdh_gen_public(&ecdh_ctx, 
-                                      MBEDTLS_ECP_DP_SECP256R1,
+    int ret = mbedtls_ecdh_gen_public(&ecdh_ctx.grp,
+                                      &ecdh_ctx.d,
+                                      &ecdh_ctx.Q,
                                       mbedtls_ctr_drbg_random, 
                                       &ctr_drbg);
+    if(ret != 0) return false;
+    
+    *pub_len = 65;
+    public_key[0] = 0x04;
+    ret = mbedtls_ecp_point_write_binary(&ecdh_ctx.grp, &ecdh_ctx.Q,
+                                         MBEDTLS_ECP_PF_UNCOMPRESSED,
+                                         pub_len, public_key);
     return ret == 0;
 }
 
@@ -38,29 +47,31 @@ bool FastPairCrypto::computeSharedSecret(const uint8_t* peer_public, size_t peer
         return false;
     }
     
-    ret = mbedtls_ecdh_get_params(&ecdh_ctx, MBEDTLS_ECDH_THEIRS, &peer_point);
+    ret = mbedtls_ecdh_compute_shared(&ecdh_ctx.grp,
+                                      &ecdh_ctx.z,
+                                      &peer_point,
+                                      &ecdh_ctx.d,
+                                      mbedtls_ctr_drbg_random,
+                                      &ctr_drbg);
     mbedtls_ecp_point_free(&peer_point);
-    if(ret != 0) return false;
-    
-    size_t olen;
-    ret = mbedtls_ecdh_calc_secret(&ecdh_ctx, &olen, 
-                                   shared_secret, sizeof(shared_secret),
-                                   mbedtls_ctr_drbg_random, &ctr_drbg);
-    return ret == 0 && olen == 32;
+    return ret == 0;
 }
 
 bool FastPairCrypto::deriveFastPairKeys(const uint8_t* nonce, size_t nonce_len) {
-    uint8_t input[64];
     if(nonce_len != 16) return false;
     
+    uint8_t input[64];
     memcpy(input, nonce, 16);
-    memcpy(input + 16, shared_secret, 32);
+    
+    size_t z_len;
+    mbedtls_mpi_write_binary(&ecdh_ctx.z, &input[16], 32);
     
     uint8_t derived[32];
-    mbedtls_aes_setkey_enc(&aes_ctx, shared_secret, 256);
+    mbedtls_aes_setkey_enc(&aes_ctx, &input[16], 256);
     
+    size_t nc_off = 0;
     uint8_t counter[16] = {0};
-    mbedtls_aes_crypt_ctr(&aes_ctx, 32, counter, input, derived);
+    mbedtls_aes_crypt_ctr(&aes_ctx, 32, &nc_off, counter, input, derived);
     
     memcpy(account_key, derived, 16);
     return true;
@@ -71,9 +82,10 @@ void FastPairCrypto::encryptCTR(uint8_t* data, size_t len, const uint8_t* key, c
     mbedtls_aes_init(&ctx);
     mbedtls_aes_setkey_enc(&ctx, key, 128);
     
+    size_t nc_off = 0;
     uint8_t counter[16];
     memcpy(counter, nonce, 16);
-    mbedtls_aes_crypt_ctr(&ctx, len, counter, data, data);
+    mbedtls_aes_crypt_ctr(&ctx, len, &nc_off, counter, data, data);
     
     mbedtls_aes_free(&ctx);
 }
@@ -90,17 +102,24 @@ void FastPairCrypto::benchmark() {
     uint64_t start = esp_timer_get_time();
     
     uint8_t pub_key[65];
-    size_t pub_len = 0;
-    generateKeyPair(pub_key, &pub_len);
+    size_t pub_len = 65;
+    if(!generateKeyPair(pub_key, &pub_len)) {
+        Serial.println("[Crypto] Key gen failed");
+        return;
+    }
     
     uint64_t keygen_time = esp_timer_get_time() - start;
     Serial.printf("[Crypto] ECDH Key Gen: %.2f ms\n", keygen_time / 1000.0);
     
     start = esp_timer_get_time();
-    computeSharedSecret(pub_key, pub_len);
+    if(!computeSharedSecret(pub_key, pub_len)) {
+        Serial.println("[Crypto] Shared secret failed");
+        return;
+    }
+    
     uint64_t secret_time = esp_timer_get_time() - start;
     Serial.printf("[Crypto] Shared Secret: %.2f ms\n", secret_time / 1000.0);
     
     Serial.printf("[Crypto] Total: %.2f ms\n", (keygen_time + secret_time) / 1000.0);
-    Serial.printf("[Crypto] Free Heap: %d bytes\n", ESP.getFreeHeap());
+    Serial.printf("[Crypto] Free Heap: %ld bytes\n", ESP.getFreeHeap());
 }
