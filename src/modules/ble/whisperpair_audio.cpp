@@ -1,4 +1,5 @@
 #include "whisperpair_audio.h"
+#include "whisperpair.h"
 #include <globals.h>
 #include "core/display.h"
 #include "core/mykeyboard.h"
@@ -80,7 +81,7 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     NimBLEClient* pClient = NimBLEDevice::createClient();
 
     if(!pClient->connect(target)) {
-        displayMessage("Failed to connect", "", "", "", 0);
+        displayMessage("Failed to connect", "", "", "", TFT_WHITE);
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
@@ -94,7 +95,7 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     }
 
     if(!pService) {
-        displayMessage("No audio service", "", "", "", 0);
+        displayMessage("No audio service", "", "", "", TFT_WHITE);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
@@ -138,15 +139,15 @@ void audioCommandHijackTest() {
 
     NimBLEAddress target(input.c_str(), BLE_ADDR_RANDOM);
 
-    if(!requireButtonHoldConfirmation("Start audio CMD hijack?", 3000)) {
+    if(!requireSimpleConfirmation("Start audio CMD hijack?")) {
         return;
     }
 
     bool success = attemptAudioCommandHijack(target);
 
     if(success) {
-        displayMessage("SUCCESS!", "Audio commands sent", "", "", 2000);
+        displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
     } else {
-        displayMessage("FAILED", "No audio service", "", "", 2000);
+        displayMessage("FAILED", "No audio service", "", "", TFT_RED);
     }
 }
