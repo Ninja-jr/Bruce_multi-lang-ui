@@ -7,17 +7,14 @@
 
 extern std::vector<String> fastPairDevices;
 
-bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
-    drawMainBorderWithTitle("CONFIRMATION REQUIRED");
+bool requireSimpleConfirmation(const char* message) {
+    drawMainBorderWithTitle("CONFIRM");
     padprintln(message);
     padprintln("");
-    padprintln("Hold SELECT for " + String(ms/1000) + "s");
-    padprintln("or press ESC to cancel");
+    padprintln("Press SEL to confirm");
+    padprintln("or ESC to cancel");
 
-    uint32_t startTime = millis();
-    bool holding = false;
-
-    while(millis() - startTime < ms) {
+    while(true) {
         if(check(EscPress)) {
             displayMessage("Cancelled", "", "", "", TFT_WHITE);
             delay(1000);
@@ -25,28 +22,13 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
         }
 
         if(check(SelPress)) {
-            holding = true;
-            int progress = ((millis() - startTime) * 100) / ms;
-            tft.fillRect(20, 120, tftWidth-40, 10, bruceConfig.bgColor);
-            tft.fillRect(20, 120, ((tftWidth-40) * progress) / 100, 10, TFT_GREEN);
-        } else {
-            if(holding) {
-                displayMessage("Released too soon", "", "", "", TFT_WHITE);
-                delay(1000);
-                return false;
-            }
+            displayMessage("Confirmed!", "", "", "", TFT_WHITE);
+            delay(500);
+            return true;
         }
 
         delay(50);
     }
-
-    if(holding) {
-        displayMessage("Confirmed!", "", "", "", TFT_WHITE);
-        delay(500);
-        return true;
-    }
-
-    return false;
 }
 
 bool attemptKeyBasedPairing(NimBLEAddress target) {
@@ -123,7 +105,7 @@ void testFastPairVulnerability() {
 
     NimBLEAddress target(input.c_str(), BLE_ADDR_RANDOM);
 
-    if(!requireButtonHoldConfirmation("Test vulnerability?", 3000)) {
+    if(!requireSimpleConfirmation("Test vulnerability?")) {
         return;
     }
 
@@ -157,7 +139,7 @@ void whisperPairMenu() {
     }});
 
     options.push_back({"[$$] Full Pair Test", []() {
-        if(!requireButtonHoldConfirmation("FULL PAIRING EXPLOIT", 5000)) return;
+        if(!requireSimpleConfirmation("FULL PAIRING EXPLOIT")) return;
 
         String input = keyboard("", 17, "Target MAC (AA:BB:CC:DD:EE:FF)");
         if(input.isEmpty()) return;
@@ -170,7 +152,7 @@ void whisperPairMenu() {
         padprintln("3. Complete pairing");
         padprintln("4. Store account key");
 
-        if(!requireButtonHoldConfirmation("CONFIRM FULL EXPLOIT", 3000)) return;
+        if(!requireSimpleConfirmation("CONFIRM FULL EXPLOIT")) return;
 
         extern bool whisperPairFullExploit(NimBLEAddress);
         bool success = whisperPairFullExploit(target);
