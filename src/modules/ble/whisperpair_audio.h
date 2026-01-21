@@ -2,8 +2,6 @@
 #include <NimBLEDevice.h>
 #include <Arduino.h>
 
-bool requireButtonHoldConfirmation(const char* message, uint32_t ms = 3000);
-
 class AudioCommandService {
 private:
     NimBLEServer* pServer;
@@ -11,11 +9,11 @@ private:
     NimBLECharacteristic* pAudioCmdChar;
     NimBLECharacteristic* pAudioDataChar;
     bool isRunning = false;
-    
+
     class AudioCmdCallbacks : public NimBLECharacteristicCallbacks {
         void onWrite(NimBLECharacteristic* pCharacteristic);
     };
-    
+
 public:
     void begin();
     void sendAudioCommand(const char* cmd);
