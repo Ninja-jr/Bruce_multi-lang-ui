@@ -23,30 +23,51 @@ void testBLEScanner() {
     scan->setWindow(80);
     scan->setDuplicateFilter(true);
     Serial.println("[DEBUG] Scanning for 5 seconds...");
-    NimBLEScanResults results = scan->start(5, false);
-    Serial.printf("[DEBUG] Found %d devices:\n", results.getCount());
-    for(int i = 0; i < results.getCount(); i++) {
-        NimBLEAdvertisedDevice device = results.getDevice(i);
-        Serial.printf("  %d: %s - %s (RSSI: %d)\n", i,
-            device.getAddress().toString().c_str(),
-            device.getName().c_str(),
-            device.getRSSI());
+    
+    if (scan->start(5, false)) {
+        NimBLEScanResults results = scan->getResults();
+        Serial.printf("[DEBUG] Found %d devices:\n", results.getCount());
+        
+        for(int i = 0; i < results.getCount(); i++) {
+            NimBLEAdvertisedDevice* device = results.getDevice(i);
+            if (device) {
+                Serial.printf("  %d: %s - %s (RSSI: %d)\n", i,
+                    device->getAddress().toString().c_str(),
+                    device->getName().c_str(),
+                    device->getRSSI());
+            }
+        }
+        
+        tft.fillScreen(bruceConfig.bgColor);
+        drawMainBorderWithTitle("BLE SCANNER TEST");
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        padprintln("Devices found: " + String(results.getCount()));
+        padprintln("");
+        
+        for(int i = 0; i < min(results.getCount(), 5); i++) {
+            NimBLEAdvertisedDevice* device = results.getDevice(i);
+            if (device) {
+                String line = String(device->getAddress().toString().c_str()) + 
+                             " (" + String(device->getRSSI()) + "dBm)";
+                padprintln(line);
+            }
+        }
+        
+        if(results.getCount() == 0) padprintln("NO DEVICES FOUND!");
+        padprintln("");
+        padprintln("Press any key");
+        
+        scan->clearResults();
+    } else {
+        Serial.println("[DEBUG] Scan failed to start!");
+        tft.fillScreen(bruceConfig.bgColor);
+        drawMainBorderWithTitle("BLE SCANNER TEST");
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        padprintln("Scan failed to start!");
+        padprintln("");
+        padprintln("Press any key");
     }
-    scan->clearResults();
-    tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle("BLE SCANNER TEST");
-    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    padprintln("Devices found: " + String(results.getCount()));
-    padprintln("");
-    for(int i = 0; i < min(results.getCount(), 5); i++) {
-        NimBLEAdvertisedDevice device = results.getDevice(i);
-        String line = String(device.getAddress().toString().c_str()) + 
-                     " (" + String(device.getRSSI()) + "dBm)";
-        padprintln(line);
-    }
-    if(results.getCount() == 0) padprintln("NO DEVICES FOUND!");
-    padprintln("");
-    padprintln("Press any key");
+    
     while(!check(AnyKeyPress)) delay(50);
 }
 
