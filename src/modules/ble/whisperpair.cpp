@@ -121,8 +121,10 @@ String selectTargetFromScan(const char* title) {
     
     class SimpleScanCallbacks : public NimBLEScanCallbacks {
         std::vector<BLE_Device>& devices;
+        bool& scanningRef;
     public:
-        SimpleScanCallbacks(std::vector<BLE_Device>& devs) : devices(devs) {}
+        SimpleScanCallbacks(std::vector<BLE_Device>& devs, bool& scanningFlag) 
+            : devices(devs), scanningRef(scanningFlag) {}
         
         void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
             BLE_Device device;
@@ -149,11 +151,11 @@ String selectTargetFromScan(const char* title) {
         }
 
         void onScanEnd(NimBLEScanResults results) {
-            scanning = false;
+            scanningRef = false;
         }
     };
 
-    pScan->setScanCallbacks(new SimpleScanCallbacks(foundDevices));
+    pScan->setScanCallbacks(new SimpleScanCallbacks(foundDevices, scanning));
     pScan->setActiveScan(true);
     pScan->setInterval(100);
     pScan->setWindow(99);
@@ -162,7 +164,7 @@ String selectTargetFromScan(const char* title) {
     scanning = true;
     scanStartTime = millis();
     uint32_t scanTime = 5000;
-    pScan->start(scanTime / 1000, nullptr, false);
+    pScan->start(scanTime / 1000, false);
 
     while(scanning) {
         tft.fillScreen(bruceConfig.bgColor);
