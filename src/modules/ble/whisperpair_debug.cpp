@@ -8,28 +8,22 @@
 FastPairCrypto crypto;
 
 void printBLEInfo() {
-    Serial.println("\n=== BLE STACK INFO ===");
-    Serial.printf("NimBLE Version: %s\n", NimBLEDevice::getVersion().c_str());
-    Serial.printf("Initialized: %s\n", NimBLEDevice::getInitialized() ? "YES" : "NO");
-    Serial.printf("Free Heap: %d\n", ESP.getFreeHeap());
-    Serial.printf("Free PSRAM: %d\n", ESP.getFreePsram());
-    Serial.printf("CPU Freq: %d MHz\n", ESP.getCpuFreqMHz());
-    Serial.println("=====================\n");
+    Serial.println("\n=== SYSTEM INFO ===");
+    Serial.printf("Free Heap: %lu\n", ESP.getFreeHeap());
+    Serial.printf("Free PSRAM: %lu\n", ESP.getFreePsram());
+    Serial.printf("CPU Freq: %lu MHz\n", ESP.getCpuFreqMHz());
+    Serial.println("===================\n");
 }
 
 void testBLEScanner() {
     Serial.println("\n[DEBUG] Starting BLE scanner test...");
-    if(!NimBLEDevice::getInitialized()) {
-        NimBLEDevice::init("Debug-Test");
-        delay(100);
-    }
     NimBLEScan* scan = NimBLEDevice::getScan();
     scan->setActiveScan(true);
     scan->setInterval(160);
     scan->setWindow(80);
     scan->setDuplicateFilter(true);
     Serial.println("[DEBUG] Scanning for 5 seconds...");
-    NimBLEScanResults results = scan->start(5);
+    NimBLEScanResults results = scan->start(5, false);
     Serial.printf("[DEBUG] Found %d devices:\n", results.getCount());
     for(int i = 0; i < results.getCount(); i++) {
         NimBLEAdvertisedDevice device = results.getDevice(i);
@@ -62,11 +56,7 @@ void testBLEConnection() {
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     padprintln("Testing BLE connection...");
     padprintln("");
-    if(!NimBLEDevice::getInitialized()) {
-        NimBLEDevice::init("Connection-Test");
-        delay(100);
-    }
-    padprintln("NimBLE initialized");
+    padprintln("NimBLE ready");
     padprintln("Heap: " + String(ESP.getFreeHeap()));
     padprintln("Ready for connections");
     padprintln("");
@@ -84,7 +74,7 @@ void memoryCheck() {
     padprintln("");
     padprintln("Press any key");
     while(!check(AnyKeyPress)) delay(50);
-    Serial.printf("[MEMORY] Heap: %d, PSRAM: %d, MaxAlloc: %d\n",
+    Serial.printf("[MEMORY] Heap: %lu, PSRAM: %lu, MaxAlloc: %lu\n",
         ESP.getFreeHeap(), ESP.getFreePsram(), ESP.getMaxAllocHeap());
 }
 
@@ -142,11 +132,10 @@ void fastpair_benchmark() {
 
 void whisperPairDebugMenu() {
     std::vector<Option> options;
-    options.push_back({"[ℹ️] BLE Stack Info", []() {
+    options.push_back({"[ℹ️] System Info", []() {
         tft.fillScreen(bruceConfig.bgColor);
-        drawMainBorderWithTitle("BLE STACK INFO");
+        drawMainBorderWithTitle("SYSTEM INFO");
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        padprintln("NimBLE: " + String(NimBLEDevice::getVersion().c_str()));
         padprintln("Heap: " + String(ESP.getFreeHeap()) + " bytes");
         padprintln("PSRAM: " + String(ESP.getFreePsram()) + " bytes");
         padprintln("CPU: " + String(ESP.getCpuFreqMHz()) + " MHz");
