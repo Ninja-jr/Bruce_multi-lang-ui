@@ -6,7 +6,7 @@
 #include "core/mykeyboard.h"
 
 extern std::vector<String> fastPairDevices;
-bool returnToMenu = false;
+extern bool returnToMenu;  // CHANGED FROM: bool returnToMenu = false;
 
 bool requireSimpleConfirmation(const char* message) {
     drawMainBorderWithTitle("CONFIRM");
@@ -106,26 +106,26 @@ String selectTargetFromScan(const char* title) {
         std::string name;
         int rssi;
     };
-    
+
     std::vector<BLE_Device> foundDevices;
     bool scanning = false;
     uint32_t scanStartTime = 0;
-    
+
     foundDevices.clear();
-    
+
     NimBLEDevice::deinit(true);
     NimBLEDevice::init("");
 
     NimBLEScan* pScan = NimBLEDevice::getScan();
     pScan->clearResults();
-    
+
     class SimpleScanCallbacks : public NimBLEScanCallbacks {
         std::vector<BLE_Device>& devices;
         bool& scanningRef;
     public:
         SimpleScanCallbacks(std::vector<BLE_Device>& devs, bool& scanningFlag) 
             : devices(devs), scanningRef(scanningFlag) {}
-        
+
         void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
             BLE_Device device;
             device.address = advertisedDevice->getAddress().toString();
