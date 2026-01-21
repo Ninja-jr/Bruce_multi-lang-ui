@@ -1,0 +1,19 @@
+#pragma once
+#include <Arduino.h>
+#include <NimBLEDevice.h>
+#include <MenuItemInterface.h>
+#include <functional>
+#include <vector>
+
+extern int loopOptions(std::vector<Option>& options, uint8_t type, const char* title, int index, bool interpreter);
+
+bool requireSimpleConfirmation(const char* message);
+void testFastPairVulnerability();
+bool attemptKeyBasedPairing(NimBLEAddress target);
+String selectTargetFromScan(const char* title);
+void whisperPairMenu();
+
+bool fastpair_ecdh_key_exchange(NimBLEAddress target, uint8_t* shared_secret);
+bool fastpair_complete_pairing(NimBLEAddress target, const uint8_t* shared_secret);
+void fastpair_benchmark();
+bool whisperPairFullExploit(NimBLEAddress target);
