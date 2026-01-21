@@ -114,12 +114,6 @@ String selectTargetFromScan(const char* title) {
     bool scanning = false;
     foundDevices.clear();
     
-    if(!NimBLEDevice::getInitialized()) {
-        NimBLEDevice::init("Bruce-WhisperPair");
-        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        delay(100);
-    }
-    
     NimBLEScan* pScan = NimBLEDevice::getScan();
     pScan->clearResults();
     
