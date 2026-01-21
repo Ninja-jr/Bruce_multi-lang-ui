@@ -1,0 +1,9 @@
+#pragma once
+#include <Arduino.h>
+#include <NimBLEDevice.h>
+void printBLEInfo();
+void testBLEScanner();
+void testBLEConnection();
+void memoryCheck();
+void fastpair_benchmark();
+void whisperPairDebugMenu();
