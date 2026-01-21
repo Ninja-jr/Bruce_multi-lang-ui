@@ -15,10 +15,6 @@ void AudioCommandService::AudioCmdCallbacks::onWrite(NimBLECharacteristic* pChar
 
 void AudioCommandService::begin() {
     if(isRunning) return;
-    if(!NimBLEDevice::getInitialized()) {
-        NimBLEDevice::init("WhisperAudioCMD");
-        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-    }
     pServer = NimBLEDevice::createServer();
     pService = pServer->createService("19B10000-E8F2-537E-4F6C-D104768A1214");
     pAudioCmdChar = pService->createCharacteristic(
