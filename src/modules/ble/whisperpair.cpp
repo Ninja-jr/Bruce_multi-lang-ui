@@ -1,6 +1,5 @@
 #include "whisperpair.h"
 #include "whisperpair_audio.h"
-#include "whisperpair_scan.h"
 #include "fastpair_crypto.h"
 #include <globals.h>
 #include "core/display.h"
