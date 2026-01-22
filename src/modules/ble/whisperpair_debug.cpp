@@ -29,7 +29,7 @@ void testBLEScanner() {
         Serial.printf("[DEBUG] Found %d devices:\n", results.getCount());
         
         for(int i = 0; i < results.getCount(); i++) {
-            NimBLEAdvertisedDevice* device = results.getDevice(i);
+            const NimBLEAdvertisedDevice* device = results.getDevice(i);
             if (device) {
                 Serial.printf("  %d: %s - %s (RSSI: %d)\n", i,
                     device->getAddress().toString().c_str(),
@@ -45,7 +45,7 @@ void testBLEScanner() {
         padprintln("");
         
         for(int i = 0; i < min(results.getCount(), 5); i++) {
-            NimBLEAdvertisedDevice* device = results.getDevice(i);
+            const NimBLEAdvertisedDevice* device = results.getDevice(i);
             if (device) {
                 String line = String(device->getAddress().toString().c_str()) + 
                              " (" + String(device->getRSSI()) + "dBm)";
