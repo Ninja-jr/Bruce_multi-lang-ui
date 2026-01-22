@@ -356,11 +356,11 @@ void whisperPairMenu() {
     std::vector<Option> options;
     returnToMenu = false;
 
-    options.push_back({"[ Scan & Test ]", []() {
+    options.push_back({"[Scan & Test]", []() {
         testFastPairVulnerability();
     }});
 
-    options.push_back({"[ Full Pair Test ]", []() {
+    options.push_back({"[Full Pair Test]", []() {
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("FULL PAIR EXPLOIT");
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -398,11 +398,11 @@ void whisperPairMenu() {
         }
     }});
 
-    options.push_back({"[ Audio CMD Hijack ]", []() {
+    options.push_back({"[Audio CMD Hijack]", []() {
         audioCommandHijackTest();
     }});
 
-    options.push_back({"[ Debug Menu ]", []() {
+    options.push_back({"[Debug Menu]", []() {
         whisperPairDebugMenu();
     }});
 
