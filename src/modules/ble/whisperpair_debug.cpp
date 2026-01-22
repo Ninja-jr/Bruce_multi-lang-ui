@@ -184,7 +184,7 @@ void fastpair_benchmark() {
 
 void whisperPairDebugMenu() {
     std::vector<Option> options;
-    options.push_back({"[ℹ️] System Info", []() {
+    options.push_back({"[System Info]", []() {
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("SYSTEM INFO");
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -201,10 +201,10 @@ void whisperPairDebugMenu() {
         tft.print("Press any key");
         while(!check(AnyKeyPress)) delay(50);
     }});
-    options.push_back({"[ Test BLE Scanner ]", []() { testBLEScanner(); }});
-    options.push_back({"[ Test BLE Connection ]", []() { testBLEConnection(); }});
-    options.push_back({"[ Memory Check ]", []() { memoryCheck(); }});
-    options.push_back({"[ Crypto Benchmark ]", []() { fastpair_benchmark(); }});
+    options.push_back({"[Test BLE Scanner]", []() { testBLEScanner(); }});
+    options.push_back({"[Test BLE Connection]", []() { testBLEConnection(); }});
+    options.push_back({"[Memory Check]", []() { memoryCheck(); }});
+    options.push_back({"[Crypto Benchmark]", []() { fastpair_benchmark(); }});
     options.push_back({"Back", []() {}});
     loopOptions(options, MENU_TYPE_SUBMENU, "DEBUG", 0, false);
 }
