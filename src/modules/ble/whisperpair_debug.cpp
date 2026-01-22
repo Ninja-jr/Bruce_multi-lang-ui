@@ -5,7 +5,7 @@
 #include "core/display.h"
 #include "core/mykeyboard.h"
 
-FastPairCrypto crypto;
+extern FastPairCrypto crypto;
 
 void printBLEInfo() {
     Serial.println("\n=== SYSTEM INFO ===");
