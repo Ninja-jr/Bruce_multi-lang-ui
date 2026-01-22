@@ -20,11 +20,9 @@ bool initNimBLEIfNeeded(const char* deviceName) {
         }
 #endif
         
-        if (!NimBLEDevice::getInitialized()) {
-            NimBLEDevice::init(deviceName);
-            NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-            NimBLEDevice::setSecurityAuth(false, false, false);
-        }
+        NimBLEDevice::init(deviceName);
+        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+        NimBLEDevice::setSecurityAuth(false, false, false);
         
         initialized = true;
     }
