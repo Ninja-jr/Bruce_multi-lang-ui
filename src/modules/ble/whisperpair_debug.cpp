@@ -21,37 +21,30 @@ void bleHardwareTest() {
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     
     tft.setCursor(20, 60);
-    tft.print("Testing BLE hardware...");
+    tft.print("Testing NimBLE hardware...");
     
-    esp_bt_controller_status_t status = esp_bt_controller_get_status();
-    tft.setCursor(20, 80);
-    tft.print("BT Status: " + String(status));
+    bool nimbleWorks = false;
     
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_BT);
-    char macStr[18];
-    sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    tft.setCursor(20, 100);
-    tft.print("MAC: " + String(macStr));
+    try {
+        NimBLEDevice::init("test");
+        tft.setCursor(20, 80);
+        tft.print("NimBLE: INIT OK");
+        nimbleWorks = true;
+        NimBLEDevice::deinit(true);
+    } catch(...) {
+        tft.setCursor(20, 80);
+        tft.print("NimBLE: INIT FAILED");
+    }
     
-#ifdef CONFIG_BT_ENABLED
-    tft.setCursor(20, 120);
-    tft.print("BT Enabled: YES");
-#else
-    tft.setCursor(20, 120);
-    tft.print("BT Enabled: NO");
-#endif
+    if (nimbleWorks) {
+        tft.setCursor(20, 100);
+        tft.print("Status: WORKING");
+    } else {
+        tft.setCursor(20, 100);
+        tft.print("Status: FAILED");
+    }
     
-#ifdef CONFIG_BT_NIMBLE_ENABLED
     tft.setCursor(20, 140);
-    tft.print("NimBLE: YES");
-#else
-    tft.setCursor(20, 140);
-    tft.print("NimBLE: NO");
-#endif
-    
-    tft.setCursor(20, 180);
     tft.print("Press any key");
     while(!check(AnyKeyPress)) delay(50);
 }
