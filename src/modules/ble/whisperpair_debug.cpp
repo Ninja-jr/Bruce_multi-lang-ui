@@ -48,28 +48,36 @@ void testBLEScanner() {
     tft.setCursor(20, 50);
     tft.print("Scanning...");
     
-    NimBLEScanResults results = scan->start(3, true);
-    
-    tft.fillScreen(bruceConfig.bgColor);
-    tft.setCursor(20, 20);
-    tft.print("BLE SCANNER TEST");
-    
-    if (results.getCount() > 0) {
-        tft.setCursor(20, 50);
-        tft.print("Found: " + String(results.getCount()));
+    if (scan->start(3, true)) {
+        NimBLEScanResults results = scan->getResults();
         
-        for(int i = 0; i < min(results.getCount(), 6); i++) {
-            const NimBLEAdvertisedDevice* device = results.getDevice(i);
-            if (device) {
-                tft.setCursor(20, 70 + (i * 20));
-                String addr = device->getAddress().toString().c_str();
-                if (addr.length() > 12) addr = addr.substring(0, 12);
-                tft.print(addr + " " + String(device->getRSSI()) + "dB");
+        tft.fillScreen(bruceConfig.bgColor);
+        tft.setCursor(20, 20);
+        tft.print("BLE SCANNER TEST");
+        
+        if (results.getCount() > 0) {
+            tft.setCursor(20, 50);
+            tft.print("Found: " + String(results.getCount()));
+            
+            for(int i = 0; i < min(results.getCount(), 6); i++) {
+                const NimBLEAdvertisedDevice* device = results.getDevice(i);
+                if (device) {
+                    tft.setCursor(20, 70 + (i * 20));
+                    String addr = device->getAddress().toString().c_str();
+                    if (addr.length() > 12) addr = addr.substring(0, 12);
+                    tft.print(addr + " " + String(device->getRSSI()) + "dB");
+                }
             }
+        } else {
+            tft.setCursor(20, 50);
+            tft.print("No devices found");
         }
     } else {
+        tft.fillScreen(bruceConfig.bgColor);
+        tft.setCursor(20, 20);
+        tft.print("BLE SCANNER TEST");
         tft.setCursor(20, 50);
-        tft.print("No devices found");
+        tft.print("Scan failed!");
     }
     
     tft.setCursor(20, 200);
