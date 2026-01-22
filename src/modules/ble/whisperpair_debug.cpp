@@ -45,13 +45,11 @@ public:
             }
         }
         
-        std::vector<std::string> serviceUUIDs = advertisedDevice->getServiceUUIDs();
-        if(!serviceUUIDs.empty()) {
-            Serial.printf("  Service UUIDs: %d found\n", serviceUUIDs.size());
-            for(auto& uuid : serviceUUIDs) {
-                Serial.printf("    %s\n", uuid.c_str());
-            }
+        NimBLEUUID serviceUUID = advertisedDevice->getServiceUUID();
+        if(serviceUUID) {
+            Serial.printf("  Service UUID: %s\n", serviceUUID.toString().c_str());
         }
+        
         Serial.println();
         
         bool exists = false;
