@@ -12,18 +12,23 @@ bool initNimBLEIfNeeded(const char* deviceName) {
     static bool initialized = false;
     
     if (!initialized) {
-#ifdef CONFIG_BT_BLUEDROID_ENABLED
-        if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+        Serial.printf("[BLE INIT] Initializing NimBLE as '%s'\n", deviceName);
+        
+        esp_bt_controller_status_t bt_status = esp_bt_controller_get_status();
+        Serial.printf("[BLE INIT] BT Controller Status: %d\n", bt_status);
+        
+        if (bt_status == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+            Serial.println("[BLE INIT] ESP32 BLE is active, disabling...");
             esp_bluedroid_disable();
             esp_bt_controller_disable();
-            delay(100);
+            delay(500);
         }
-#endif
         
         NimBLEDevice::init(deviceName);
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
         NimBLEDevice::setSecurityAuth(false, false, false);
         
+        Serial.println("[BLE INIT] NimBLE initialized successfully");
         initialized = true;
     }
     
@@ -135,6 +140,8 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
 }
 
 String selectTargetFromScan(const char* title) {
+    Serial.printf("\n[SCAN] Starting scan with title: %s\n", title);
+    
     struct BLE_Device {
         std::string address;
         std::string name;
@@ -148,9 +155,12 @@ String selectTargetFromScan(const char* title) {
 
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (!pScan) {
+        Serial.println("[SCAN] ERROR: Failed to get scanner!");
         displayMessage("Scanner init failed", "OK", "", "", TFT_RED);
         return "";
     }
+    
+    Serial.println("[SCAN] Scanner obtained successfully");
     
     pScan->clearResults();
 
@@ -170,12 +180,9 @@ String selectTargetFromScan(const char* title) {
             device.rssi = advertisedDevice->getRSSI();
             
             if(device.name.empty()) device.name = "<no name>";
-            if(device.rssi < -95) return;
             
-            if(devices.size() >= 250) {
-                Serial.println("Memory low, stopping BLE scan...");
-                return;
-            }
+            Serial.printf("[SCAN] Found: %s - %s (%d dBm)\n", 
+                device.address.c_str(), device.name.c_str(), device.rssi);
             
             bool exists = false;
             for(auto& dev : devices) {
@@ -192,6 +199,7 @@ String selectTargetFromScan(const char* title) {
         
         void onScanEnd(NimBLEScanResults results) {
             scanningRef = false;
+            Serial.println("[SCAN] Scan ended");
         }
     };
 
@@ -199,8 +207,8 @@ String selectTargetFromScan(const char* title) {
     pScan->setScanCallbacks(callbacks, true);
     
     pScan->setActiveScan(true);
-    pScan->setInterval(160);
-    pScan->setWindow(80);
+    pScan->setInterval(98);
+    pScan->setWindow(48);
     pScan->setDuplicateFilter(true);
     pScan->setMaxResults(0);
 
@@ -222,7 +230,9 @@ String selectTargetFromScan(const char* title) {
     scanning = true;
     uint32_t scanStartTime = millis();
     
+    Serial.println("[SCAN] Starting scan...");
     if(!pScan->start(0, false)) {
+        Serial.println("[SCAN] ERROR: Scan failed to start!");
         displayMessage("Scan Failed to Start", "OK", "", "", TFT_RED);
         return "";
     }
@@ -254,6 +264,7 @@ String selectTargetFromScan(const char* title) {
         if(check(EscPress)) {
             pScan->stop();
             scanning = false;
+            Serial.println("[SCAN] Scan stopped by user");
             break;
         }
         
@@ -261,6 +272,7 @@ String selectTargetFromScan(const char* title) {
     }
 
     pScan->clearResults();
+    Serial.printf("[SCAN] Scan complete. Found %d devices\n", foundDevices.size());
 
     if(foundDevices.empty()) {
         displayMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
@@ -331,6 +343,7 @@ String selectTargetFromScan(const char* title) {
         } else if(check(SelPress)) {
             if(currentIndex < foundDevices.size()) {
                 selectedMAC = String(foundDevices[currentIndex].address.c_str());
+                Serial.printf("[SCAN] Selected MAC: %s\n", selectedMAC.c_str());
             }
         }
     }
