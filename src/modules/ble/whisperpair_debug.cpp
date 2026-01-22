@@ -17,56 +17,65 @@ void printBLEInfo() {
 
 void testBLEScanner() {
     Serial.println("\n[DEBUG] Starting BLE scanner test...");
-    NimBLEScan* scan = NimBLEDevice::getScan();
-    scan->setActiveScan(true);
-    scan->setInterval(160);
-    scan->setWindow(80);
-    scan->setDuplicateFilter(true);
-    Serial.println("[DEBUG] Scanning for 5 seconds...");
     
-    if (scan->start(5, false)) {
-        NimBLEScanResults results = scan->getResults();
-        Serial.printf("[DEBUG] Found %d devices:\n", results.getCount());
-        
-        for(int i = 0; i < results.getCount(); i++) {
-            const NimBLEAdvertisedDevice* device = results.getDevice(i);
-            if (device) {
-                Serial.printf("  %d: %s - %s (RSSI: %d)\n", i,
-                    device->getAddress().toString().c_str(),
-                    device->getName().c_str(),
-                    device->getRSSI());
-            }
-        }
-        
+    initNimBLEIfNeeded("debug_scanner");
+    
+    NimBLEScan* scan = NimBLEDevice::getScan();
+    if (!scan) {
+        Serial.println("[DEBUG] Failed to get scanner!");
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("BLE SCANNER TEST");
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        padprintln("Devices found: " + String(results.getCount()));
-        padprintln("");
-        
-        for(int i = 0; i < min(results.getCount(), 5); i++) {
-            const NimBLEAdvertisedDevice* device = results.getDevice(i);
-            if (device) {
-                String line = String(device->getAddress().toString().c_str()) + 
-                             " (" + String(device->getRSSI()) + "dBm)";
-                padprintln(line);
-            }
-        }
-        
-        if(results.getCount() == 0) padprintln("NO DEVICES FOUND!");
-        padprintln("");
-        padprintln("Press any key");
-        
-        scan->clearResults();
-    } else {
-        Serial.println("[DEBUG] Scan failed to start!");
-        tft.fillScreen(bruceConfig.bgColor);
-        drawMainBorderWithTitle("BLE SCANNER TEST");
-        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        padprintln("Scan failed to start!");
-        padprintln("");
-        padprintln("Press any key");
+        tft.setCursor(20, 60);
+        tft.print("Scanner init failed!");
+        tft.setCursor(20, 80);
+        tft.print("Press any key");
+        while(!check(AnyKeyPress)) delay(50);
+        return;
     }
+    
+    scan->setActiveScan(true);
+    scan->setInterval(98);
+    scan->setWindow(48);
+    scan->setDuplicateFilter(false);
+    
+    Serial.println("[DEBUG] Scanning for 3 seconds...");
+    
+    tft.fillScreen(bruceConfig.bgColor);
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setCursor(20, 20);
+    tft.print("BLE SCANNER TEST");
+    tft.setCursor(20, 50);
+    tft.print("Scanning...");
+    
+    NimBLEScanResults results = scan->start(3, true);
+    
+    tft.fillScreen(bruceConfig.bgColor);
+    tft.setCursor(20, 20);
+    tft.print("BLE SCANNER TEST");
+    
+    if (results.getCount() > 0) {
+        tft.setCursor(20, 50);
+        tft.print("Found: " + String(results.getCount()));
+        
+        for(int i = 0; i < min(results.getCount(), 6); i++) {
+            const NimBLEAdvertisedDevice* device = results.getDevice(i);
+            if (device) {
+                tft.setCursor(20, 70 + (i * 20));
+                String addr = device->getAddress().toString().c_str();
+                if (addr.length() > 12) addr = addr.substring(0, 12);
+                tft.print(addr + " " + String(device->getRSSI()) + "dB");
+            }
+        }
+    } else {
+        tft.setCursor(20, 50);
+        tft.print("No devices found");
+    }
+    
+    tft.setCursor(20, 200);
+    tft.print("Press any key");
+    
+    scan->clearResults();
     
     while(!check(AnyKeyPress)) delay(50);
 }
@@ -75,13 +84,20 @@ void testBLEConnection() {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("BLE CONNECTION TEST");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    padprintln("Testing BLE connection...");
-    padprintln("");
-    padprintln("NimBLE ready");
-    padprintln("Heap: " + String(ESP.getFreeHeap()));
-    padprintln("Ready for connections");
-    padprintln("");
-    padprintln("Press any key");
+    tft.setCursor(20, 60);
+    tft.print("Testing BLE connection...");
+    tft.setCursor(20, 80);
+    tft.print("");
+    tft.setCursor(20, 100);
+    tft.print("NimBLE ready");
+    tft.setCursor(20, 120);
+    tft.print("Heap: " + String(ESP.getFreeHeap()));
+    tft.setCursor(20, 140);
+    tft.print("Ready for connections");
+    tft.setCursor(20, 160);
+    tft.print("");
+    tft.setCursor(20, 180);
+    tft.print("Press any key");
     while(!check(AnyKeyPress)) delay(50);
 }
 
@@ -89,11 +105,16 @@ void memoryCheck() {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("MEMORY CHECK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    padprintln("Heap: " + String(ESP.getFreeHeap()) + " bytes");
-    padprintln("PSRAM: " + String(ESP.getFreePsram()) + " bytes");
-    padprintln("Max Alloc: " + String(ESP.getMaxAllocHeap()) + " bytes");
-    padprintln("");
-    padprintln("Press any key");
+    tft.setCursor(20, 60);
+    tft.print("Heap: " + String(ESP.getFreeHeap()) + " bytes");
+    tft.setCursor(20, 80);
+    tft.print("PSRAM: " + String(ESP.getFreePsram()) + " bytes");
+    tft.setCursor(20, 100);
+    tft.print("Max Alloc: " + String(ESP.getMaxAllocHeap()) + " bytes");
+    tft.setCursor(20, 120);
+    tft.print("");
+    tft.setCursor(20, 140);
+    tft.print("Press any key");
     while(!check(AnyKeyPress)) delay(50);
     Serial.printf("[MEMORY] Heap: %lu, PSRAM: %lu, MaxAlloc: %lu\n",
         ESP.getFreeHeap(), ESP.getFreePsram(), ESP.getMaxAllocHeap());
@@ -146,8 +167,10 @@ void fastpair_benchmark() {
     Serial.printf("[WhisperPair] Benchmark: KeyGen=%.2fms, Secret=%.2fms, Derive=%.2fms, Total=%.2fms\n",
         keygen_time / 1000.0, secret_time / 1000.0, derive_time / 1000.0,
         (keygen_time + secret_time + derive_time) / 1000.0);
-    padprintln("");
-    padprintln("Press any key");
+    tft.setCursor(20, 180);
+    tft.print("");
+    tft.setCursor(20, 200);
+    tft.print("Press any key");
     while(!check(AnyKeyPress)) delay(50);
 }
 
@@ -157,12 +180,17 @@ void whisperPairDebugMenu() {
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("SYSTEM INFO");
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        padprintln("Heap: " + String(ESP.getFreeHeap()) + " bytes");
-        padprintln("PSRAM: " + String(ESP.getFreePsram()) + " bytes");
-        padprintln("CPU: " + String(ESP.getCpuFreqMHz()) + " MHz");
+        tft.setCursor(20, 60);
+        tft.print("Heap: " + String(ESP.getFreeHeap()) + " bytes");
+        tft.setCursor(20, 80);
+        tft.print("PSRAM: " + String(ESP.getFreePsram()) + " bytes");
+        tft.setCursor(20, 100);
+        tft.print("CPU: " + String(ESP.getCpuFreqMHz()) + " MHz");
         printBLEInfo();
-        padprintln("");
-        padprintln("Press any key");
+        tft.setCursor(20, 140);
+        tft.print("");
+        tft.setCursor(20, 160);
+        tft.print("Press any key");
         while(!check(AnyKeyPress)) delay(50);
     }});
     options.push_back({"[🔍] Test BLE Scanner", []() { testBLEScanner(); }});
