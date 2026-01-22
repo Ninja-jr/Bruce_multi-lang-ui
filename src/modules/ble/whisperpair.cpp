@@ -222,8 +222,8 @@ String selectTargetFromScan(const char* title) {
     
     pScan->setScanCallbacks(&scanCallbacks, false);
     pScan->setActiveScan(true);
-    pScan->setInterval(67);
-    pScan->setWindow(33);
+    pScan->setInterval(100);
+    pScan->setWindow(50);
     pScan->setDuplicateFilter(false);
     pScan->setMaxResults(0);
     
