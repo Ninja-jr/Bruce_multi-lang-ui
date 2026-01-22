@@ -5,6 +5,7 @@
 #include <functional>
 #include <vector>
 extern int loopOptions(std::vector<Option>& options, uint8_t type, const char* title, int index, bool interpreter);
+bool initNimBLEIfNeeded(const char* deviceName = "whisperpair");
 bool requireSimpleConfirmation(const char* message);
 void testFastPairVulnerability();
 bool attemptKeyBasedPairing(NimBLEAddress target);
