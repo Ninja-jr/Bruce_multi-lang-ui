@@ -169,8 +169,13 @@ String selectTargetFromScan(const char* title) {
             device.name = advertisedDevice->getName();
             device.rssi = advertisedDevice->getRSSI();
             
-            if(device.name.empty()) device.name = "Unknown";
+            if(device.name.empty()) device.name = "<no name>";
             if(device.rssi < -95) return;
+            
+            if(devices.size() >= 250) {
+                Serial.println("Memory low, stopping BLE scan...");
+                return;
+            }
             
             bool exists = false;
             for(auto& dev : devices) {
@@ -255,11 +260,18 @@ String selectTargetFromScan(const char* title) {
         delay(10);
     }
 
+    pScan->clearResults();
+
     if(foundDevices.empty()) {
         displayMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
         delay(1500);
         return "";
     }
+
+    std::sort(foundDevices.begin(), foundDevices.end(), 
+        [](const BLE_Device& a, const BLE_Device& b) {
+            return a.rssi > b.rssi;
+        });
 
     int currentIndex = 0;
     bool redraw = true;
@@ -273,38 +285,32 @@ String selectTargetFromScan(const char* title) {
             drawMainBorderWithTitle("SELECT DEVICE");
             tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
             
-            tft.setCursor(20, 60);
+            tft.setCursor(20, 50);
             tft.print("Found: " + String(foundDevices.size()));
             
-            tft.setCursor(20, 80);
+            tft.setCursor(20, 70);
             tft.print("Device " + String(currentIndex + 1) + "/" + String(foundDevices.size()));
-            
-            tft.setCursor(20, 100);
-            tft.print("");
             
             if(currentIndex < foundDevices.size()) {
                 BLE_Device& dev = foundDevices[currentIndex];
                 
-                tft.setCursor(20, 120);
+                tft.setCursor(20, 100);
                 tft.print("Name: " + String(dev.name.c_str()));
                 
-                tft.setCursor(20, 140);
+                tft.setCursor(20, 120);
                 tft.print("MAC: " + String(dev.address.c_str()));
                 
-                tft.setCursor(20, 160);
+                tft.setCursor(20, 140);
                 tft.print("RSSI: " + String(dev.rssi) + " dBm");
             }
             
             tft.setCursor(20, 180);
-            tft.print("");
-            
-            tft.setCursor(20, 200);
             tft.print("PREV/NEXT: Navigate");
             
-            tft.setCursor(20, 220);
+            tft.setCursor(20, 200);
             tft.print("SEL: Select device");
             
-            tft.setCursor(20, 240);
+            tft.setCursor(20, 220);
             tft.print("ESC: Cancel");
             
             redraw = false;
@@ -364,22 +370,33 @@ void whisperPairMenu() {
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("FULL PAIR EXPLOIT");
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        tft.setCursor(20, 60);
+        tft.setTextSize(1);
+        
+        int lineHeight = 18;
+        int startY = 50;
+        
+        tft.setCursor(20, startY);
         tft.print("This will attempt full pairing:");
-        tft.setCursor(20, 80);
+        
+        tft.setCursor(20, startY + lineHeight);
         tft.print("1. Connect to target");
-        tft.setCursor(20, 100);
+        
+        tft.setCursor(20, startY + (lineHeight * 2));
         tft.print("2. ECDH key exchange");
-        tft.setCursor(20, 120);
+        
+        tft.setCursor(20, startY + (lineHeight * 3));
         tft.print("3. Complete pairing");
-        tft.setCursor(20, 140);
+        
+        tft.setCursor(20, startY + (lineHeight * 4));
         tft.print("4. Store account key");
-        tft.setCursor(20, 160);
-        tft.print("");
-        tft.setCursor(20, 180);
-        tft.print("Press SEL to continue");
-        tft.setCursor(20, 200);
-        tft.print("ESC to cancel");
+        
+        String prompt = "Press SEL to continue - ESC to cancel";
+        int textWidth = prompt.length() * 6;
+        int centerX = (tftWidth - textWidth) / 2;
+        if (centerX < 20) centerX = 20;
+        tft.setCursor(centerX, startY + (lineHeight * 5));
+        tft.print(prompt);
+        
         while(true) {
             if(check(EscPress)) return;
             if(check(SelPress)) break;
@@ -406,7 +423,7 @@ void whisperPairMenu() {
         whisperPairDebugMenu();
     }});
 
-    options.push_back({"Back", []() { returnToMenu = true; }});
+    options.push_back({"[Back]", []() { returnToMenu = true; }});
 
     loopOptions(options, MENU_TYPE_SUBMENU, "whisperPair", 0, false);
 }
