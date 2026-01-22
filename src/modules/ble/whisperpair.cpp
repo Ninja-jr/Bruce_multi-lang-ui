@@ -8,18 +8,75 @@
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
 
+class SimpleScanCallbacks : public NimBLEScanCallbacks {
+public:
+    std::vector<BLE_Device> devices;
+    bool scanning = true;
+    uint32_t deviceCount = 0;
+    
+    void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+        if(!advertisedDevice) return;
+        
+        std::string address = advertisedDevice->getAddress().toString();
+        std::string name = advertisedDevice->getName();
+        int rssi = advertisedDevice->getRSSI();
+        
+        if(name.empty()) name = "<no name>";
+        
+        Serial.printf("[SCAN] Found: %s - %s (%d dBm)\n", 
+            address.c_str(), name.c_str(), rssi);
+        
+        bool exists = false;
+        for(auto& dev : devices) {
+            if(dev.address == address) {
+                exists = true;
+                dev.rssi = rssi;
+                break;
+            }
+        }
+        
+        if(!exists) {
+            BLE_Device device;
+            device.address = address;
+            device.name = name;
+            device.rssi = rssi;
+            devices.push_back(device);
+            deviceCount++;
+        }
+    }
+    
+    void onScanEnd(NimBLEScanResults results) {
+        scanning = false;
+        Serial.printf("[SCAN] Scan ended. Found %d unique devices\n", devices.size());
+    }
+    
+    void clear() {
+        devices.clear();
+        deviceCount = 0;
+        scanning = true;
+    }
+};
+
+static SimpleScanCallbacks scanCallbacks;
+
 bool initNimBLEIfNeeded(const char* deviceName) {
     static bool initialized = false;
-    
+
     if (!initialized) {
         Serial.printf("[BLE INIT] Initializing NimBLE as '%s'\n", deviceName);
-        
-        NimBLEDevice::init(deviceName);
-        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        NimBLEDevice::setSecurityAuth(false, false, false);
-        
-        Serial.println("[BLE INIT] NimBLE initialized successfully");
-        initialized = true;
+
+        try {
+            NimBLEDevice::init(deviceName);
+            NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+            NimBLEDevice::setSecurityAuth(false, false, false);
+            
+            Serial.println("[BLE INIT] NimBLE initialized successfully");
+            initialized = true;
+            return true;
+        } catch(const std::exception& e) {
+            Serial.printf("[BLE INIT] ERROR: %s\n", e.what());
+            return false;
+        }
     }
     
     return true;
@@ -30,10 +87,10 @@ void updateScanDisplay(uint32_t foundCount, uint32_t elapsedMs, bool forceRedraw
     static uint32_t lastTime = 0;
     static uint32_t lastUpdate = 0;
     uint32_t now = millis();
-    
+
     if(!forceRedraw && (now - lastUpdate < 250)) return;
     lastUpdate = now;
-    
+
     if(forceRedraw || foundCount != lastFound) {
         tft.fillRect(20, 60, 200, 20, bruceConfig.bgColor);
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -41,7 +98,7 @@ void updateScanDisplay(uint32_t foundCount, uint32_t elapsedMs, bool forceRedraw
         tft.print("Found: " + String(foundCount));
         lastFound = foundCount;
     }
-    
+
     uint32_t elapsedSeconds = elapsedMs / 1000;
     if(forceRedraw || elapsedSeconds != lastTime) {
         tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
@@ -132,17 +189,17 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
 String selectTargetFromScan(const char* title) {
     Serial.printf("\n[SCAN] Starting scan with title: %s\n", title);
     
-    struct BLE_Device {
-        std::string address;
-        std::string name;
-        int rssi;
-    };
-    std::vector<BLE_Device> foundDevices;
-    bool scanning = false;
-    foundDevices.clear();
-
-    initNimBLEIfNeeded("scanner");
-
+    scanCallbacks.clear();
+    
+    NimBLEDevice::deinit(true);
+    delay(500);
+    
+    if(!initNimBLEIfNeeded("scanner")) {
+        Serial.println("[SCAN] ERROR: Failed to initialize NimBLE!");
+        displayMessage("BLE Init failed", "OK", "", "", TFT_RED);
+        return "";
+    }
+    
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (!pScan) {
         Serial.println("[SCAN] ERROR: Failed to get scanner!");
@@ -153,55 +210,14 @@ String selectTargetFromScan(const char* title) {
     Serial.println("[SCAN] Scanner obtained successfully");
     
     pScan->clearResults();
-
-    class SimpleScanCallbacks : public NimBLEScanCallbacks {
-        std::vector<BLE_Device>& devices;
-        bool& scanningRef;
-    public:
-        SimpleScanCallbacks(std::vector<BLE_Device>& devs, bool& scanningFlag) 
-            : devices(devs), scanningRef(scanningFlag) {}
-
-        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
-            if(!advertisedDevice) return;
-            
-            BLE_Device device;
-            device.address = advertisedDevice->getAddress().toString();
-            device.name = advertisedDevice->getName();
-            device.rssi = advertisedDevice->getRSSI();
-            
-            if(device.name.empty()) device.name = "<no name>";
-            
-            Serial.printf("[SCAN] Found: %s - %s (%d dBm)\n", 
-                device.address.c_str(), device.name.c_str(), device.rssi);
-            
-            bool exists = false;
-            for(auto& dev : devices) {
-                if(dev.address == device.address) {
-                    exists = true;
-                    dev.rssi = device.rssi;
-                    break;
-                }
-            }
-            if(!exists) {
-                devices.push_back(device);
-            }
-        }
-        
-        void onScanEnd(NimBLEScanResults results) {
-            scanningRef = false;
-            Serial.println("[SCAN] Scan ended");
-        }
-    };
-
-    SimpleScanCallbacks* callbacks = new SimpleScanCallbacks(foundDevices, scanning);
-    pScan->setScanCallbacks(callbacks, true);
     
+    pScan->setScanCallbacks(&scanCallbacks, false);
     pScan->setActiveScan(true);
-    pScan->setInterval(98);
-    pScan->setWindow(48);
-    pScan->setDuplicateFilter(true);
+    pScan->setInterval(67);
+    pScan->setWindow(33);
+    pScan->setDuplicateFilter(false);
     pScan->setMaxResults(0);
-
+    
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -216,21 +232,20 @@ String selectTargetFromScan(const char* title) {
     tft.print("Press ESC to stop");
     
     tft.fillRect(20, 140, tftWidth - 40, 10, TFT_DARKGREY);
-
-    scanning = true;
-    uint32_t scanStartTime = millis();
     
-    Serial.println("[SCAN] Starting scan...");
-    if(!pScan->start(0, false)) {
+    Serial.println("[SCAN] Starting scan for 30 seconds max...");
+    if(!pScan->start(30, false)) {
         Serial.println("[SCAN] ERROR: Scan failed to start!");
         displayMessage("Scan Failed to Start", "OK", "", "", TFT_RED);
         return "";
     }
-
+    
     static int barPos = 0;
     uint32_t lastUpdate = 0;
-
-    while(scanning) {
+    uint32_t scanStartTime = millis();
+    bool userStopped = false;
+    
+    while(scanCallbacks.scanning) {
         uint32_t now = millis();
         
         if(now - lastUpdate > 250) {
@@ -238,7 +253,7 @@ String selectTargetFromScan(const char* title) {
             
             tft.fillRect(20, 60, 100, 20, bruceConfig.bgColor);
             tft.setCursor(20, 60);
-            tft.print("Found: " + String(foundDevices.size()));
+            tft.print("Found: " + String(scanCallbacks.devices.size()));
             
             uint32_t elapsedSeconds = (now - scanStartTime) / 1000;
             tft.fillRect(20, 80, 100, 20, bruceConfig.bgColor);
@@ -252,33 +267,38 @@ String selectTargetFromScan(const char* title) {
         }
         
         if(check(EscPress)) {
+            Serial.println("[SCAN] User stopped scan");
             pScan->stop();
-            scanning = false;
-            Serial.println("[SCAN] Scan stopped by user");
+            userStopped = true;
+            scanCallbacks.scanning = false;
             break;
         }
         
-        delay(10);
+        delay(5);
     }
-
+    
+    delay(100);
+    
+    pScan->stop();
     pScan->clearResults();
-    Serial.printf("[SCAN] Scan complete. Found %d devices\n", foundDevices.size());
-
-    if(foundDevices.empty()) {
-        displayMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
+    
+    Serial.printf("[SCAN] Scan complete. Found %d unique devices\n", scanCallbacks.devices.size());
+    
+    if(scanCallbacks.devices.empty()) {
+        displayMessage("NO DEVICES FOUND", "Try moving closer", "to target devices", "", TFT_YELLOW);
         delay(1500);
         return "";
     }
-
-    std::sort(foundDevices.begin(), foundDevices.end(), 
+    
+    std::sort(scanCallbacks.devices.begin(), scanCallbacks.devices.end(), 
         [](const BLE_Device& a, const BLE_Device& b) {
             return a.rssi > b.rssi;
         });
-
+    
     int currentIndex = 0;
     bool redraw = true;
     String selectedMAC = "";
-
+    
     while(selectedMAC.isEmpty()) {
         if(check(EscPress)) break;
         
@@ -288,13 +308,13 @@ String selectTargetFromScan(const char* title) {
             tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
             
             tft.setCursor(20, 50);
-            tft.print("Found: " + String(foundDevices.size()));
+            tft.print("Found: " + String(scanCallbacks.devices.size()));
             
             tft.setCursor(20, 70);
-            tft.print("Device " + String(currentIndex + 1) + "/" + String(foundDevices.size()));
+            tft.print("Device " + String(currentIndex + 1) + "/" + String(scanCallbacks.devices.size()));
             
-            if(currentIndex < foundDevices.size()) {
-                BLE_Device& dev = foundDevices[currentIndex];
+            if(currentIndex < scanCallbacks.devices.size()) {
+                BLE_Device& dev = scanCallbacks.devices[currentIndex];
                 
                 tft.setCursor(20, 100);
                 tft.print("Name: " + String(dev.name.c_str()));
@@ -326,18 +346,18 @@ String selectTargetFromScan(const char* title) {
                 redraw = true;
             }
         } else if(check(NextPress)) {
-            if(currentIndex < foundDevices.size() - 1) {
+            if(currentIndex < scanCallbacks.devices.size() - 1) {
                 currentIndex++;
                 redraw = true;
             }
         } else if(check(SelPress)) {
-            if(currentIndex < foundDevices.size()) {
-                selectedMAC = String(foundDevices[currentIndex].address.c_str());
+            if(currentIndex < scanCallbacks.devices.size()) {
+                selectedMAC = String(scanCallbacks.devices[currentIndex].address.c_str());
                 Serial.printf("[SCAN] Selected MAC: %s\n", selectedMAC.c_str());
             }
         }
     }
-
+    
     return selectedMAC;
 }
 
@@ -364,11 +384,11 @@ void testFastPairVulnerability() {
 void whisperPairMenu() {
     std::vector<Option> options;
     returnToMenu = false;
-
+    
     options.push_back({"[Scan & Test]", []() {
         testFastPairVulnerability();
     }});
-
+    
     options.push_back({"[Full Pair Test]", []() {
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("FULL PAIR EXPLOIT");
@@ -417,16 +437,16 @@ void whisperPairMenu() {
             displayMessage("Exploit failed", "OK", "", "", TFT_RED);
         }
     }});
-
+    
     options.push_back({"[Audio CMD Hijack]", []() {
         audioCommandHijackTest();
     }});
-
+    
     options.push_back({"[Debug Menu]", []() {
         whisperPairDebugMenu();
     }});
-
+    
     options.push_back({"[Back]", []() { returnToMenu = true; }});
-
+    
     loopOptions(options, MENU_TYPE_SUBMENU, "whisperPair", 0, false);
 }
