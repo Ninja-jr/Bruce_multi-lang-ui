@@ -61,6 +61,13 @@ static SimpleScanCallbacks scanCallbacks;
 
 bool initNimBLEIfNeeded(const char* deviceName) {
     static bool initialized = false;
+    static std::string lastDeviceName = "";
+
+    if (initialized && lastDeviceName != deviceName) {
+        NimBLEDevice::deinit(true);
+        initialized = false;
+        delay(100);
+    }
 
     if (!initialized) {
         Serial.printf("[BLE INIT] Initializing NimBLE as '%s'\n", deviceName);
@@ -72,9 +79,11 @@ bool initNimBLEIfNeeded(const char* deviceName) {
             
             Serial.println("[BLE INIT] NimBLE initialized successfully");
             initialized = true;
+            lastDeviceName = deviceName;
             return true;
         } catch(const std::exception& e) {
             Serial.printf("[BLE INIT] ERROR: %s\n", e.what());
+            initialized = false;
             return false;
         }
     }
@@ -237,6 +246,8 @@ String selectTargetFromScan(const char* title) {
     if(!pScan->start(30, false)) {
         Serial.println("[SCAN] ERROR: Scan failed to start!");
         displayMessage("Scan Failed to Start", "OK", "", "", TFT_RED);
+        pScan->stop();
+        NimBLEDevice::deinit(true);
         return "";
     }
     
@@ -271,22 +282,56 @@ String selectTargetFromScan(const char* title) {
             pScan->stop();
             userStopped = true;
             scanCallbacks.scanning = false;
+            delay(100);
             break;
         }
         
         delay(5);
     }
     
-    delay(100);
-    
     pScan->stop();
+    delay(100);
     pScan->clearResults();
+    
+    NimBLEDevice::deinit(true);
     
     Serial.printf("[SCAN] Scan complete. Found %d unique devices\n", scanCallbacks.devices.size());
     
     if(scanCallbacks.devices.empty()) {
-        displayMessage("NO DEVICES FOUND", "Try moving closer", "to target devices", "", TFT_YELLOW);
-        delay(1500);
+        tft.fillScreen(bruceConfig.bgColor);
+        drawMainBorderWithTitle("SCAN RESULTS");
+        tft.setTextColor(TFT_YELLOW, bruceConfig.bgColor);
+        tft.setTextSize(1);
+        
+        int lineHeight = 20;
+        int startY = 60;
+        
+        tft.setCursor(20, startY);
+        tft.print("NO DEVICES FOUND");
+        
+        tft.setCursor(20, startY + lineHeight);
+        tft.print("Try moving closer to target");
+        
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        int buttonY = 180;
+        int buttonHeight = 40;
+        int buttonWidth = 100;
+        int buttonX = (tftWidth - buttonWidth) / 2;
+        
+        tft.fillRoundRect(buttonX, buttonY, buttonWidth, buttonHeight, 5, TFT_DARKGREY);
+        tft.drawRoundRect(buttonX, buttonY, buttonWidth, buttonHeight, 5, TFT_WHITE);
+        
+        String okText = "OK";
+        int textWidth = okText.length() * 6;
+        int textX = buttonX + (buttonWidth - textWidth) / 2;
+        tft.setCursor(textX, buttonY + 12);
+        tft.print(okText);
+        
+        tft.setCursor(20, 230);
+        tft.print("Press OK to continue");
+        
+        while(!check(AnyKeyPress)) delay(50);
+        
         return "";
     }
     
@@ -357,6 +402,8 @@ String selectTargetFromScan(const char* title) {
             }
         }
     }
+    
+    NimBLEDevice::deinit(true);
     
     return selectedMAC;
 }
