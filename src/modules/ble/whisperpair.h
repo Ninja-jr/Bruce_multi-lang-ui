@@ -4,6 +4,13 @@
 #include <MenuItemInterface.h>
 #include <functional>
 #include <vector>
+
+struct BLE_Device {
+    std::string address;
+    std::string name;
+    int rssi;
+};
+
 extern int loopOptions(std::vector<Option>& options, uint8_t type, const char* title, int index, bool interpreter);
 bool initNimBLEIfNeeded(const char* deviceName = "whisperpair");
 bool requireSimpleConfirmation(const char* message);
