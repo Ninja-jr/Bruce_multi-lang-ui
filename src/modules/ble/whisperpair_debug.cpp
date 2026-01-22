@@ -46,8 +46,9 @@ public:
         }
         
         NimBLEUUID serviceUUID = advertisedDevice->getServiceUUID();
-        if(serviceUUID) {
-            Serial.printf("  Service UUID: %s\n", serviceUUID.toString().c_str());
+        std::string uuidStr = serviceUUID.toString();
+        if(!uuidStr.empty() && uuidStr != "00000000-0000-0000-0000-000000000000") {
+            Serial.printf("  Service UUID: %s\n", uuidStr.c_str());
         }
         
         Serial.println();
