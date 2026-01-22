@@ -8,22 +8,51 @@
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
 
+bool initNimBLEIfNeeded(const char* deviceName) {
+    static bool initialized = false;
+    
+    if (!initialized) {
+#ifdef CONFIG_BT_BLUEDROID_ENABLED
+        if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+            esp_bluedroid_disable();
+            esp_bt_controller_disable();
+            delay(100);
+        }
+#endif
+        
+        if (!NimBLEDevice::getInitialized()) {
+            NimBLEDevice::init(deviceName);
+            NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+            NimBLEDevice::setSecurityAuth(false, false, false);
+        }
+        
+        initialized = true;
+    }
+    
+    return true;
+}
+
 void updateScanDisplay(uint32_t foundCount, uint32_t elapsedMs, bool forceRedraw) {
     static uint32_t lastFound = 0;
     static uint32_t lastTime = 0;
     static uint32_t lastUpdate = 0;
     uint32_t now = millis();
+    
     if(!forceRedraw && (now - lastUpdate < 250)) return;
     lastUpdate = now;
+    
     if(forceRedraw || foundCount != lastFound) {
-        tft.fillRect(20, 60, 100, 20, bruceConfig.bgColor);
+        tft.fillRect(20, 60, 200, 20, bruceConfig.bgColor);
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         tft.setCursor(20, 60);
         tft.print("Found: " + String(foundCount));
         lastFound = foundCount;
     }
+    
     uint32_t elapsedSeconds = elapsedMs / 1000;
     if(forceRedraw || elapsedSeconds != lastTime) {
-        tft.fillRect(20, 80, 100, 20, bruceConfig.bgColor);
+        tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         tft.setCursor(20, 80);
         tft.print("Time: " + String(elapsedSeconds) + "s");
         lastTime = elapsedSeconds;
@@ -32,10 +61,13 @@ void updateScanDisplay(uint32_t foundCount, uint32_t elapsedMs, bool forceRedraw
 
 bool requireSimpleConfirmation(const char* message) {
     drawMainBorderWithTitle("CONFIRM");
-    padprintln(message);
-    padprintln("");
-    padprintln("Press SEL to confirm");
-    padprintln("or ESC to cancel");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print(message);
+    tft.setCursor(20, 100);
+    tft.print("Press SEL to confirm");
+    tft.setCursor(20, 120);
+    tft.print("or ESC to cancel");
     while(true) {
         if(check(EscPress)) {
             displayMessage("Cancelled", "", "", "", TFT_WHITE);
@@ -113,25 +145,35 @@ String selectTargetFromScan(const char* title) {
     std::vector<BLE_Device> foundDevices;
     bool scanning = false;
     foundDevices.clear();
-    
+
+    initNimBLEIfNeeded("scanner");
+
     NimBLEScan* pScan = NimBLEDevice::getScan();
-    pScan->clearResults();
+    if (!pScan) {
+        displayMessage("Scanner init failed", "OK", "", "", TFT_RED);
+        return "";
+    }
     
+    pScan->clearResults();
+
     class SimpleScanCallbacks : public NimBLEScanCallbacks {
         std::vector<BLE_Device>& devices;
         bool& scanningRef;
     public:
         SimpleScanCallbacks(std::vector<BLE_Device>& devs, bool& scanningFlag) 
             : devices(devs), scanningRef(scanningFlag) {}
-        
+
         void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
             if(!advertisedDevice) return;
+            
             BLE_Device device;
             device.address = advertisedDevice->getAddress().toString();
             device.name = advertisedDevice->getName();
             device.rssi = advertisedDevice->getRSSI();
+            
             if(device.name.empty()) device.name = "Unknown";
             if(device.rssi < -95) return;
+            
             bool exists = false;
             for(auto& dev : devices) {
                 if(dev.address == device.address) {
@@ -140,96 +182,138 @@ String selectTargetFromScan(const char* title) {
                     break;
                 }
             }
-            if(!exists) devices.push_back(device);
+            if(!exists) {
+                devices.push_back(device);
+            }
         }
+        
         void onScanEnd(NimBLEScanResults results) {
             scanningRef = false;
         }
     };
-    
+
     SimpleScanCallbacks* callbacks = new SimpleScanCallbacks(foundDevices, scanning);
-    pScan->setScanCallbacks(callbacks);
+    pScan->setScanCallbacks(callbacks, true);
+    
     pScan->setActiveScan(true);
     pScan->setInterval(160);
     pScan->setWindow(80);
-    pScan->setMaxResults(0);
     pScan->setDuplicateFilter(true);
-    
+    pScan->setMaxResults(0);
+
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    
     tft.setCursor(20, 60);
     tft.print("Found: 0");
+    
     tft.setCursor(20, 80);
     tft.print("Time: 0s");
+    
     tft.setCursor(20, 100);
     tft.print("Press ESC to stop");
-    tft.fillRect(20, 140, tftWidth - 40, 10, TFT_DARKGREY);
     
+    tft.fillRect(20, 140, tftWidth - 40, 10, TFT_DARKGREY);
+
     scanning = true;
     uint32_t scanStartTime = millis();
     
     if(!pScan->start(0, false)) {
-        delete callbacks;
-        displayMessage("Scan Failed", "OK", "", "", TFT_RED);
+        displayMessage("Scan Failed to Start", "OK", "", "", TFT_RED);
         return "";
     }
-    
+
     static int barPos = 0;
     uint32_t lastUpdate = 0;
-    
+
     while(scanning) {
         uint32_t now = millis();
+        
         if(now - lastUpdate > 250) {
             lastUpdate = now;
-            updateScanDisplay(foundDevices.size(), now - scanStartTime);
+            
+            tft.fillRect(20, 60, 100, 20, bruceConfig.bgColor);
+            tft.setCursor(20, 60);
+            tft.print("Found: " + String(foundDevices.size()));
+            
+            uint32_t elapsedSeconds = (now - scanStartTime) / 1000;
+            tft.fillRect(20, 80, 100, 20, bruceConfig.bgColor);
+            tft.setCursor(20, 80);
+            tft.print("Time: " + String(elapsedSeconds) + "s");
+            
             int barWidth = tftWidth - 40;
             tft.fillRect(20, 140, barWidth, 10, TFT_DARKGREY);
             barPos = (barPos + 5) % (barWidth - 20);
             tft.fillRect(20 + barPos, 140, 20, 10, TFT_GREEN);
         }
+        
         if(check(EscPress)) {
             pScan->stop();
             scanning = false;
             break;
         }
+        
         delay(10);
     }
-    
-    delete callbacks;
-    
+
     if(foundDevices.empty()) {
-        displayMessage("NO DEVICES", "Found 0 devices", "", "", TFT_YELLOW);
+        displayMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
         delay(1500);
         return "";
     }
-    
+
     int currentIndex = 0;
     bool redraw = true;
     String selectedMAC = "";
-    
+
     while(selectedMAC.isEmpty()) {
         if(check(EscPress)) break;
+        
         if(redraw) {
             tft.fillScreen(bruceConfig.bgColor);
             drawMainBorderWithTitle("SELECT DEVICE");
             tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-            padprintln("Found: " + String(foundDevices.size()));
-            padprintln("Device " + String(currentIndex + 1) + "/" + String(foundDevices.size()));
-            padprintln("");
+            
+            tft.setCursor(20, 60);
+            tft.print("Found: " + String(foundDevices.size()));
+            
+            tft.setCursor(20, 80);
+            tft.print("Device " + String(currentIndex + 1) + "/" + String(foundDevices.size()));
+            
+            tft.setCursor(20, 100);
+            tft.print("");
+            
             if(currentIndex < foundDevices.size()) {
                 BLE_Device& dev = foundDevices[currentIndex];
-                padprintln("Name: " + String(dev.name.c_str()));
-                padprintln("MAC: " + String(dev.address.c_str()));
-                padprintln("RSSI: " + String(dev.rssi) + " dBm");
+                
+                tft.setCursor(20, 120);
+                tft.print("Name: " + String(dev.name.c_str()));
+                
+                tft.setCursor(20, 140);
+                tft.print("MAC: " + String(dev.address.c_str()));
+                
+                tft.setCursor(20, 160);
+                tft.print("RSSI: " + String(dev.rssi) + " dBm");
             }
-            padprintln("");
-            padprintln("PREV/NEXT: Navigate");
-            padprintln("SEL: Select device");
-            padprintln("ESC: Cancel");
+            
+            tft.setCursor(20, 180);
+            tft.print("");
+            
+            tft.setCursor(20, 200);
+            tft.print("PREV/NEXT: Navigate");
+            
+            tft.setCursor(20, 220);
+            tft.print("SEL: Select device");
+            
+            tft.setCursor(20, 240);
+            tft.print("ESC: Cancel");
+            
             redraw = false;
         }
+        
         delay(50);
+        
         if(check(PrevPress)) {
             if(currentIndex > 0) {
                 currentIndex--;
@@ -246,43 +330,58 @@ String selectTargetFromScan(const char* title) {
             }
         }
     }
-    
+
     return selectedMAC;
 }
 
 void testFastPairVulnerability() {
+    initNimBLEIfNeeded();
+    
     String selectedMAC = selectTargetFromScan("SELECT TARGET");
     if(selectedMAC.isEmpty()) return;
+    
     NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
+    
     if(!requireSimpleConfirmation("Test vulnerability?")) return;
+    
     bool vulnerable = attemptKeyBasedPairing(target);
+    
     Serial.printf("[WhisperPair] %s - %s\n", 
         selectedMAC.c_str(), 
         vulnerable ? "VULNERABLE" : "PATCHED/SAFE"
     );
+    
     delay(2000);
 }
 
 void whisperPairMenu() {
     std::vector<Option> options;
     returnToMenu = false;
-    
+
     options.push_back({"[🔍] Scan & Test", []() {
         testFastPairVulnerability();
     }});
-    
+
     options.push_back({"[⚡] Full Pair Test", []() {
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("FULL PAIR EXPLOIT");
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        padprintln("This will attempt full pairing:");
-        padprintln("1. Connect to target");
-        padprintln("2. ECDH key exchange");
-        padprintln("3. Complete pairing");
-        padprintln("4. Store account key");
-        padprintln("");
-        padprintln("Press SEL to continue");
-        padprintln("ESC to cancel");
+        tft.setCursor(20, 60);
+        tft.print("This will attempt full pairing:");
+        tft.setCursor(20, 80);
+        tft.print("1. Connect to target");
+        tft.setCursor(20, 100);
+        tft.print("2. ECDH key exchange");
+        tft.setCursor(20, 120);
+        tft.print("3. Complete pairing");
+        tft.setCursor(20, 140);
+        tft.print("4. Store account key");
+        tft.setCursor(20, 160);
+        tft.print("");
+        tft.setCursor(20, 180);
+        tft.print("Press SEL to continue");
+        tft.setCursor(20, 200);
+        tft.print("ESC to cancel");
         while(true) {
             if(check(EscPress)) return;
             if(check(SelPress)) break;
@@ -300,16 +399,16 @@ void whisperPairMenu() {
             displayMessage("Exploit failed", "OK", "", "", TFT_RED);
         }
     }});
-    
+
     options.push_back({"[🎤] Audio CMD Hijack", []() {
         audioCommandHijackTest();
     }});
-    
+
     options.push_back({"[🐛] Debug Menu", []() {
         whisperPairDebugMenu();
     }});
-    
+
     options.push_back({"Back", []() { returnToMenu = true; }});
-    
+
     loopOptions(options, MENU_TYPE_SUBMENU, "whisperPair", 0, false);
 }
