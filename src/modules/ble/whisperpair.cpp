@@ -14,16 +14,6 @@ bool initNimBLEIfNeeded(const char* deviceName) {
     if (!initialized) {
         Serial.printf("[BLE INIT] Initializing NimBLE as '%s'\n", deviceName);
         
-        esp_bt_controller_status_t bt_status = esp_bt_controller_get_status();
-        Serial.printf("[BLE INIT] BT Controller Status: %d\n", bt_status);
-        
-        if (bt_status == ESP_BT_CONTROLLER_STATUS_ENABLED) {
-            Serial.println("[BLE INIT] ESP32 BLE is active, disabling...");
-            esp_bluedroid_disable();
-            esp_bt_controller_disable();
-            delay(500);
-        }
-        
         NimBLEDevice::init(deviceName);
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
         NimBLEDevice::setSecurityAuth(false, false, false);
