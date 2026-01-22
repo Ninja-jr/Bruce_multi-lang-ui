@@ -242,8 +242,8 @@ String selectTargetFromScan(const char* title) {
     
     tft.fillRect(20, 140, tftWidth - 40, 10, TFT_DARKGREY);
     
-    Serial.println("[SCAN] Starting scan for 30 seconds max...");
-    if(!pScan->start(30, false)) {
+    Serial.println("[SCAN] Starting continuous scan...");
+    if(!pScan->start(0, true)) {
         Serial.println("[SCAN] ERROR: Scan failed to start!");
         displayMessage("Scan Failed to Start", "OK", "", "", TFT_RED);
         pScan->stop();
@@ -258,6 +258,7 @@ String selectTargetFromScan(const char* title) {
     
     while(scanCallbacks.scanning) {
         uint32_t now = millis();
+        uint32_t elapsed = now - scanStartTime;
         
         if(now - lastUpdate > 250) {
             lastUpdate = now;
@@ -266,7 +267,7 @@ String selectTargetFromScan(const char* title) {
             tft.setCursor(20, 60);
             tft.print("Found: " + String(scanCallbacks.devices.size()));
             
-            uint32_t elapsedSeconds = (now - scanStartTime) / 1000;
+            uint32_t elapsedSeconds = elapsed / 1000;
             tft.fillRect(20, 80, 100, 20, bruceConfig.bgColor);
             tft.setCursor(20, 80);
             tft.print("Time: " + String(elapsedSeconds) + "s");
@@ -277,10 +278,15 @@ String selectTargetFromScan(const char* title) {
             tft.fillRect(20 + barPos, 140, 20, 10, TFT_GREEN);
         }
         
-        if(check(EscPress)) {
-            Serial.println("[SCAN] User stopped scan");
+        if(check(EscPress) || elapsed > 60000) {
+            if(elapsed > 60000) {
+                Serial.println("[SCAN] 60 second timeout reached");
+            } else {
+                Serial.println("[SCAN] User stopped scan");
+                userStopped = true;
+            }
+            
             pScan->stop();
-            userStopped = true;
             scanCallbacks.scanning = false;
             delay(100);
             break;
@@ -295,7 +301,11 @@ String selectTargetFromScan(const char* title) {
     
     NimBLEDevice::deinit(true);
     
-    Serial.printf("[SCAN] Scan complete. Found %d unique devices\n", scanCallbacks.devices.size());
+    if(userStopped) {
+        Serial.printf("[SCAN] User stopped. Found %d unique devices\n", scanCallbacks.devices.size());
+    } else {
+        Serial.printf("[SCAN] Timeout reached. Found %d unique devices\n", scanCallbacks.devices.size());
+    }
     
     if(scanCallbacks.devices.empty()) {
         tft.fillScreen(bruceConfig.bgColor);
@@ -313,22 +323,8 @@ String selectTargetFromScan(const char* title) {
         tft.print("Try moving closer to target");
         
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        int buttonY = 180;
-        int buttonHeight = 40;
-        int buttonWidth = 100;
-        int buttonX = (tftWidth - buttonWidth) / 2;
-        
-        tft.fillRoundRect(buttonX, buttonY, buttonWidth, buttonHeight, 5, TFT_DARKGREY);
-        tft.drawRoundRect(buttonX, buttonY, buttonWidth, buttonHeight, 5, TFT_WHITE);
-        
-        String okText = "OK";
-        int textWidth = okText.length() * 6;
-        int textX = buttonX + (buttonWidth - textWidth) / 2;
-        tft.setCursor(textX, buttonY + 12);
-        tft.print(okText);
-        
-        tft.setCursor(20, 230);
-        tft.print("Press OK to continue");
+        tft.setCursor(20, startY + (lineHeight * 2));
+        tft.print("Press any key to exit");
         
         while(!check(AnyKeyPress)) delay(50);
         
@@ -409,7 +405,9 @@ String selectTargetFromScan(const char* title) {
 }
 
 void testFastPairVulnerability() {
-    initNimBLEIfNeeded();
+    NimBLEDevice::deinit(true);
+    delay(500);
+    initNimBLEIfNeeded("vuln_test");
     
     String selectedMAC = selectTargetFromScan("SELECT TARGET");
     if(selectedMAC.isEmpty()) return;
@@ -417,6 +415,10 @@ void testFastPairVulnerability() {
     NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
     
     if(!requireSimpleConfirmation("Test vulnerability?")) return;
+    
+    NimBLEDevice::deinit(true);
+    delay(500);
+    initNimBLEIfNeeded("vuln_client");
     
     bool vulnerable = attemptKeyBasedPairing(target);
     
@@ -472,11 +474,22 @@ void whisperPairMenu() {
             if(check(SelPress)) break;
             delay(50);
         }
+        
+        NimBLEDevice::deinit(true);
+        delay(500);
+        initNimBLEIfNeeded("full_exploit");
+        
         String selectedMAC = selectTargetFromScan("SELECT TARGET");
         if(selectedMAC.isEmpty()) return;
+        
         NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
         int8_t confirm = displayMessage("Confirm full exploit?", "No", "Yes", "Back", TFT_YELLOW);
         if(confirm != 1) return;
+        
+        NimBLEDevice::deinit(true);
+        delay(500);
+        initNimBLEIfNeeded("exploit_client");
+        
         bool success = whisperPairFullExploit(target);
         if(success) {
             displayMessage("EXPLOIT SUCCESSFUL!", "OK", "", "", TFT_GREEN);
