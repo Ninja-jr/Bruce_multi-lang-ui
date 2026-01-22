@@ -205,6 +205,6 @@ void whisperPairDebugMenu() {
     options.push_back({"[Test BLE Connection]", []() { testBLEConnection(); }});
     options.push_back({"[Memory Check]", []() { memoryCheck(); }});
     options.push_back({"[Crypto Benchmark]", []() { fastpair_benchmark(); }});
-    options.push_back({"Back", []() {}});
+    options.push_back({"[Back]", []() {}});
     loopOptions(options, MENU_TYPE_SUBMENU, "DEBUG", 0, false);
 }
