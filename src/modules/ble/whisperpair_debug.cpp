@@ -69,24 +69,29 @@ void testRawBLE() {
     tft.setCursor(20, 80);
     tft.print("Starting scan...");
     
-    NimBLEScanResults results = pScan->start(3);
+    bool scanStarted = pScan->start(3);
+    NimBLEScanResults results = pScan->getResults();
     
     tft.setCursor(20, 100);
-    tft.print("Raw scan count: " + String(results.getCount()));
-    
-    if(results.getCount() > 0) {
-        tft.setCursor(20, 120);
-        tft.print("BLE IS WORKING!");
+    if(scanStarted) {
+        tft.print("Raw scan count: " + String(results.getCount()));
         
-        const NimBLEAdvertisedDevice* device = results.getDevice(0);
-        if(device) {
-            tft.setCursor(20, 140);
-            String addr = device->getAddress().toString().c_str();
-            tft.print("First: " + addr);
+        if(results.getCount() > 0) {
+            tft.setCursor(20, 120);
+            tft.print("BLE IS WORKING!");
+            
+            const NimBLEAdvertisedDevice* device = results.getDevice(0);
+            if(device) {
+                tft.setCursor(20, 140);
+                String addr = device->getAddress().toString().c_str();
+                tft.print("First: " + addr);
+            }
+        } else {
+            tft.setCursor(20, 120);
+            tft.print("NO DEVICES FOUND");
         }
     } else {
-        tft.setCursor(20, 120);
-        tft.print("NO DEVICES FOUND");
+        tft.print("SCAN FAILED TO START");
     }
     
     pScan->clearResults();
