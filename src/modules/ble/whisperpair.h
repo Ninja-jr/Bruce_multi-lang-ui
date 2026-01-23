@@ -1,11 +1,7 @@
 #pragma once
 
+#include "ble_compat.h"
 #include <Arduino.h>
-#include <NimBLEBeacon.h>
-#include <NimBLEDevice.h>
-#include <NimBLEServer.h>
-#include <NimBLEUtils.h>
-
 #include <MenuItemInterface.h>
 #include <functional>
 #include <vector>
