@@ -20,9 +20,6 @@ public:
         
         if(name.empty()) name = "<no name>";
         
-        Serial.printf("[DEBUG SCAN] Found: %s - %s (%d dBm)\n", 
-            address.c_str(), name.c_str(), rssi);
-        
         bool exists = false;
         for(auto& dev : devices) {
             if(dev.address == address) {
@@ -42,13 +39,63 @@ public:
     }
     
     void onScanEnd(NimBLEScanResults results) {
-        Serial.printf("[DEBUG SCAN] Scan ended. Found %d unique devices\n", devices.size());
     }
     
     void clear() {
         devices.clear();
     }
 };
+
+void testRawBLE() {
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("RAW BLE TEST");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    
+    tft.setCursor(20, 60);
+    tft.print("Testing raw BLE...");
+    
+    NimBLEDevice::deinit(true);
+    delay(1000);
+    
+    NimBLEDevice::init("raw_test");
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    pScan->setActiveScan(true);
+    pScan->setInterval(100);
+    pScan->setWindow(50);
+    pScan->setDuplicateFilter(false);
+    
+    tft.setCursor(20, 80);
+    tft.print("Starting scan...");
+    
+    NimBLEScanResults results = pScan->start(3);
+    
+    tft.setCursor(20, 100);
+    tft.print("Raw scan count: " + String(results.getCount()));
+    
+    if(results.getCount() > 0) {
+        tft.setCursor(20, 120);
+        tft.print("BLE IS WORKING!");
+        
+        const NimBLEAdvertisedDevice* device = results.getDevice(0);
+        if(device) {
+            tft.setCursor(20, 140);
+            String addr = device->getAddress().toString().c_str();
+            tft.print("First: " + addr);
+        }
+    } else {
+        tft.setCursor(20, 120);
+        tft.print("NO DEVICES FOUND");
+    }
+    
+    pScan->clearResults();
+    NimBLEDevice::deinit(true);
+    
+    tft.setCursor(20, 180);
+    tft.print("Press any key");
+    while(!check(AnyKeyPress)) delay(50);
+}
 
 void runScanDebugTests() {
     tft.fillScreen(bruceConfig.bgColor);
@@ -59,61 +106,93 @@ void runScanDebugTests() {
     int lineHeight = 20;
     
     tft.setCursor(20, lineY);
-    tft.print("Running 6 scan tests...");
+    tft.print("Testing 24 scan combos...");
     lineY += lineHeight;
     
-    int tests[6][3] = {
+    int tests[8][3] = {
         {100, 50, 1},
         {50, 30, 1},
         {150, 75, 1},
+        {200, 100, 1},
         {100, 50, 0},
-        {67, 33, 1},
-        {200, 100, 1}
+        {250, 125, 1},
+        {80, 40, 1},
+        {300, 150, 1}
     };
     
     int totalFound = 0;
+    int testNum = 1;
     
-    for(int i = 0; i < 6; i++) {
-        int interval = tests[i][0];
-        int window = tests[i][1];
-        bool active = tests[i][2];
-        
-        tft.setCursor(20, lineY);
-        tft.print("Test " + String(i+1) + ": ");
-        
-        DebugScanCallbacks debugCallbacks;
-        debugCallbacks.clear();
-        
-        NimBLEDevice::deinit(true);
-        delay(500);
-        
-        NimBLEDevice::init("debug_scan");
-        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        
-        NimBLEScan* pScan = NimBLEDevice::getScan();
-        pScan->setActiveScan(active);
-        pScan->setInterval(interval);
-        pScan->setWindow(window);
-        pScan->setDuplicateFilter(false);
-        pScan->setScanCallbacks(&debugCallbacks, false);
-        
-        if(pScan->start(3, true)) {
-            tft.print("OK - Found: " + String(debugCallbacks.devices.size()));
-            totalFound += debugCallbacks.devices.size();
-        } else {
-            tft.print("FAILED");
+    for(int power = 0; power < 3; power++) {
+        for(int filter = 0; filter < 2; filter++) {
+            for(int i = 0; i < 8; i++) {
+                int interval = tests[i][0];
+                int window = tests[i][1];
+                bool active = tests[i][2];
+                
+                tft.setCursor(20, lineY);
+                tft.print("Test " + String(testNum) + ": ");
+                
+                DebugScanCallbacks debugCallbacks;
+                debugCallbacks.clear();
+                
+                NimBLEDevice::deinit(true);
+                delay(500);
+                
+                NimBLEDevice::init("debug_scan");
+                
+                if(power == 0) {
+                    NimBLEDevice::setPower(ESP_PWR_LVL_N12);
+                } else if(power == 1) {
+                    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+                } else {
+                    NimBLEDevice::setPower(ESP_PWR_LVL_P3);
+                }
+                
+                NimBLEScan* pScan = NimBLEDevice::getScan();
+                pScan->setActiveScan(active);
+                pScan->setInterval(interval);
+                pScan->setWindow(window);
+                pScan->setDuplicateFilter(filter == 1);
+                pScan->setScanCallbacks(&debugCallbacks, true);
+                
+                if(pScan->start(3, true)) {
+                    tft.print("OK - Found: " + String(debugCallbacks.devices.size()));
+                    totalFound += debugCallbacks.devices.size();
+                    
+                    if(debugCallbacks.devices.size() > 0) {
+                        tft.setCursor(180, lineY);
+                        tft.print("WORKING!");
+                    }
+                } else {
+                    tft.print("FAILED");
+                }
+                
+                pScan->clearResults();
+                NimBLEDevice::deinit(true);
+                
+                lineY += lineHeight;
+                if(lineY > 220) {
+                    tft.setCursor(20, lineY);
+                    tft.print("...more tests...");
+                    lineY += lineHeight;
+                }
+                
+                testNum++;
+                delay(200);
+            }
         }
-        
-        pScan->clearResults();
-        NimBLEDevice::deinit(true);
-        
-        lineY += lineHeight;
-        delay(300);
     }
     
     lineY += lineHeight;
     tft.setCursor(20, lineY);
     tft.print("TOTAL DEVICES FOUND: " + String(totalFound));
+    
+    if(totalFound == 0) {
+        lineY += lineHeight;
+        tft.setCursor(20, lineY);
+        tft.print("NO DEVICES - Check config");
+    }
     
     lineY += lineHeight * 2;
     tft.setCursor(20, lineY);
@@ -387,6 +466,9 @@ void whisperPairDebugMenu() {
     options.push_back({"[Test BLE Connection]", []() { testBLEConnection(); }});
     options.push_back({"[Memory Check]", []() { memoryCheck(); }});
     options.push_back({"[Crypto Benchmark]", []() { fastpair_benchmark(); }});
+    options.push_back({"[Raw BLE Test]", []() {
+        testRawBLE();
+    }});
     options.push_back({"[Scan Debug Tests]", []() {
         runScanDebugTests();
     }});
