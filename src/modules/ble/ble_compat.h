@@ -19,6 +19,10 @@
     #ifndef BLEAdvertisedDevice
         #define BLEAdvertisedDevice NimBLEAdvertisedDevice
     #endif
+    
+    #ifndef BLEScanResults
+        #define BLEScanResults NimBLEScanResults
+    #endif
 #else
     #include <BLEDevice.h>
     #include <BLEServer.h>
