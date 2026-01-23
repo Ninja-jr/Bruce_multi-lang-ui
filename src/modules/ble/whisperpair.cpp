@@ -136,9 +136,7 @@ String selectTargetFromScan(const char* title) {
     };
     std::vector<BLE_Device> foundDevices;
     
-    if(!NimBLEDevice::getInitialized()) {
-        NimBLEDevice::init("");
-    }
+    NimBLEDevice::init("");
     
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (!pScan) {
