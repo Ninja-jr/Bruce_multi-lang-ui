@@ -2,7 +2,6 @@
 #include "whisperpair.h"
 #include <globals.h>
 #include "core/display.h"
-#include "core/mykeyboard.h"
 
 AudioCommandService audioCmd;
 
