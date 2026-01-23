@@ -13,15 +13,12 @@ extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
 
 bool initBLEIfNeeded(const char* deviceName) {
-    static bool initialized = false;
-    
-    if (!initialized) {
+    if(!NimBLEDevice::getInitialized()) {
         NimBLEDevice::init(deviceName);
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        initialized = true;
+        return true;
     }
-    
-    return true;
+    return false;
 }
 
 void updateScanDisplay(uint32_t foundCount, uint32_t elapsedMs, bool forceRedraw) {
@@ -135,133 +132,66 @@ String selectTargetFromScan(const char* title) {
         int rssi;
     };
     std::vector<BLE_Device> foundDevices;
-    bool scanning = false;
-    foundDevices.clear();
-
-    initBLEIfNeeded("scanner");
-
-    NimBLEScan* pScan = NimBLEDevice::getScan();
+    
+    BLEDevice::init("scanner");
+    
+    BLEScan* pScan = BLEDevice::getScan();
     if (!pScan) {
         displayMessage("Scanner init failed", "OK", "", "", TFT_RED);
         return "";
     }
     
-    pScan->clearResults();
-
-    class SimpleScanCallbacks : public NimBLEScanCallbacks {
-        std::vector<BLE_Device>& devices;
-        bool& scanningRef;
-    public:
-        SimpleScanCallbacks(std::vector<BLE_Device>& devs, bool& scanningFlag) 
-            : devices(devs), scanningRef(scanningFlag) {}
-
-        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
-            if(!advertisedDevice) return;
-            
-            BLE_Device device;
-            device.address = advertisedDevice->getAddress().toString();
-            device.name = advertisedDevice->getName();
-            device.rssi = advertisedDevice->getRSSI();
-            
-            if(device.name.empty()) device.name = "<no name>";
-            
-            bool exists = false;
-            for(auto& dev : devices) {
-                if(dev.address == device.address) {
-                    exists = true;
-                    dev.rssi = device.rssi;
-                    break;
-                }
-            }
-            if(!exists) {
-                devices.push_back(device);
-            }
-        }
-        
-        void onScanEnd(NimBLEScanResults results) {
-            scanningRef = false;
-        }
-    };
-
-    SimpleScanCallbacks* callbacks = new SimpleScanCallbacks(foundDevices, scanning);
-    pScan->setScanCallbacks(callbacks, true);
-    
     pScan->setActiveScan(true);
-    pScan->setInterval(98);
-    pScan->setWindow(48);
+    pScan->setInterval(100);
+    pScan->setWindow(99);
     pScan->setDuplicateFilter(true);
-    pScan->setMaxResults(0);
-
+    
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     
     tft.setCursor(20, 60);
+    tft.print("Scanning... 30s");
+    tft.setCursor(20, 80);
     tft.print("Found: 0");
     
-    tft.setCursor(20, 80);
-    tft.print("Time: 0s");
+    BLEScanResults results = pScan->start(30, false);
     
-    tft.setCursor(20, 100);
-    tft.print("Press ESC to stop");
-    
-    tft.fillRect(20, 140, tftWidth - 40, 10, TFT_DARKGREY);
-
-    scanning = true;
-    uint32_t scanStartTime = millis();
-    
-    pScan->start(0, false);
-    
-    static int barPos = 0;
-    uint32_t lastUpdate = 0;
-
-    while(scanning) {
-        uint32_t now = millis();
-        
-        if(now - lastUpdate > 250) {
-            lastUpdate = now;
-            
-            tft.fillRect(20, 60, 100, 20, bruceConfig.bgColor);
-            tft.setCursor(20, 60);
-            tft.print("Found: " + String(foundDevices.size()));
-            
-            uint32_t elapsedSeconds = (now - scanStartTime) / 1000;
-            tft.fillRect(20, 80, 100, 20, bruceConfig.bgColor);
-            tft.setCursor(20, 80);
-            tft.print("Time: " + String(elapsedSeconds) + "s");
-            
-            int barWidth = tftWidth - 40;
-            tft.fillRect(20, 140, barWidth, 10, TFT_DARKGREY);
-            barPos = (barPos + 5) % (barWidth - 20);
-            tft.fillRect(20 + barPos, 140, 20, 10, TFT_GREEN);
-        }
-        
-        if(check(EscPress)) {
-            pScan->stop();
-            scanning = false;
-            break;
-        }
-        
-        delay(10);
-    }
-
     pScan->clearResults();
-
+    
+    int deviceCount = results.getCount();
+    for(int i = 0; i < deviceCount; i++) {
+        const BLEAdvertisedDevice* device = results.getDevice(i);
+        if(!device) continue;
+        
+        BLE_Device dev;
+        dev.address = device->getAddress().toString();
+        dev.name = device->getName();
+        if(dev.name.empty()) dev.name = "<no name>";
+        dev.rssi = device->getRSSI();
+        
+        foundDevices.push_back(dev);
+    }
+    
+    tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
+    tft.setCursor(20, 80);
+    tft.print("Found: " + String(foundDevices.size()));
+    
     if(foundDevices.empty()) {
         displayMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
         delay(1500);
         return "";
     }
-
+    
     std::sort(foundDevices.begin(), foundDevices.end(), 
         [](const BLE_Device& a, const BLE_Device& b) {
             return a.rssi > b.rssi;
         });
-
+    
     int currentIndex = 0;
     bool redraw = true;
     String selectedMAC = "";
-
+    
     while(selectedMAC.isEmpty()) {
         if(check(EscPress)) break;
         
@@ -319,7 +249,7 @@ String selectTargetFromScan(const char* title) {
             }
         }
     }
-
+    
     return selectedMAC;
 }
 
