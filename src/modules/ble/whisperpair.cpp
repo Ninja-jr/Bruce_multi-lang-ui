@@ -13,12 +13,15 @@ extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
 
 bool initBLEIfNeeded(const char* deviceName) {
-    if(!NimBLEDevice::getInitialized()) {
+    static bool initialized = false;
+    
+    if (!initialized) {
         NimBLEDevice::init(deviceName);
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        return true;
+        initialized = true;
     }
-    return false;
+    
+    return true;
 }
 
 void updateScanDisplay(uint32_t foundCount, uint32_t elapsedMs, bool forceRedraw) {
@@ -133,9 +136,9 @@ String selectTargetFromScan(const char* title) {
     };
     std::vector<BLE_Device> foundDevices;
     
-    BLEDevice::init("scanner");
+    NimBLEDevice::init("scanner");
     
-    BLEScan* pScan = BLEDevice::getScan();
+    NimBLEScan* pScan = NimBLEDevice::getScan();
     if (!pScan) {
         displayMessage("Scanner init failed", "OK", "", "", TFT_RED);
         return "";
@@ -155,13 +158,18 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 80);
     tft.print("Found: 0");
     
-    BLEScanResults results = pScan->start(30, false);
+    NimBLEScanResults results;
+#ifdef NIMBLE_V2_PLUS
+    results = pScan->getResults(30000, false);
+#else
+    results = pScan->start(30, false);
+#endif
     
     pScan->clearResults();
     
     int deviceCount = results.getCount();
     for(int i = 0; i < deviceCount; i++) {
-        const BLEAdvertisedDevice* device = results.getDevice(i);
+        const NimBLEAdvertisedDevice* device = results.getDevice(i);
         if(!device) continue;
         
         BLE_Device dev;
