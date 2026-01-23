@@ -135,9 +135,10 @@ String selectTargetFromScan(const char* title) {
         int rssi;
     };
     std::vector<BLE_Device> foundDevices;
-    bool scanning = false;
     
-    NimBLEDevice::init("scanner");
+    if(!NimBLEDevice::getInitialized()) {
+        NimBLEDevice::init("");
+    }
     
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (!pScan) {
@@ -145,105 +146,65 @@ String selectTargetFromScan(const char* title) {
         return "";
     }
     
-    pScan->clearResults();
-    
-    class SimpleScanCallbacks : public NimBLEScanCallbacks {
-        std::vector<BLE_Device>& devices;
-        bool& scanningRef;
-    public:
-        SimpleScanCallbacks(std::vector<BLE_Device>& devs, bool& scanningFlag) 
-            : devices(devs), scanningRef(scanningFlag) {}
-        
-        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
-            if(!advertisedDevice) return;
-            
-            BLE_Device device;
-            device.address = advertisedDevice->getAddress().toString();
-            device.name = advertisedDevice->getName();
-            device.rssi = advertisedDevice->getRSSI();
-            
-            if(device.name.empty()) device.name = "<no name>";
-            
-            bool exists = false;
-            for(auto& dev : devices) {
-                if(dev.address == device.address) {
-                    exists = true;
-                    dev.rssi = device.rssi;
-                    break;
-                }
-            }
-            if(!exists) {
-                devices.push_back(device);
-            }
-        }
-        
-        void onScanEnd(NimBLEScanResults results) {
-            scanningRef = false;
-        }
-    };
-    
-    SimpleScanCallbacks* callbacks = new SimpleScanCallbacks(foundDevices, scanning);
-    pScan->setScanCallbacks(callbacks, true);
-    
     pScan->setActiveScan(true);
     pScan->setInterval(100);
     pScan->setWindow(99);
-    pScan->setDuplicateFilter(true);
-    pScan->setMaxResults(0);
     
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     
     tft.setCursor(20, 60);
-    tft.print("Found: 0");
-    
+    tft.print("Scanning... 30s");
     tft.setCursor(20, 80);
-    tft.print("Time: 0s");
-    
+    tft.print("Found: 0");
     tft.setCursor(20, 100);
     tft.print("Press ESC to stop");
     
     tft.fillRect(20, 140, tftWidth - 40, 10, TFT_DARKGREY);
     
-    scanning = true;
     uint32_t scanStartTime = millis();
-    static int barPos = 0;
-    uint32_t lastUpdate = 0;
+    bool scanStopped = false;
     
-    pScan->start(0, false);
+    pScan->start(30, false);
     
-    while(scanning) {
-        uint32_t now = millis();
-        uint32_t elapsedSeconds = (now - scanStartTime) / 1000;
+    while(millis() - scanStartTime < 30000 && !scanStopped) {
+        uint32_t elapsed = millis() - scanStartTime;
+        int barWidth = tftWidth - 40;
+        int progress = (elapsed * barWidth) / 30000;
         
-        if(now - lastUpdate > 250) {
-            lastUpdate = now;
-            
-            tft.fillRect(20, 60, 100, 20, bruceConfig.bgColor);
-            tft.setCursor(20, 60);
-            tft.print("Found: " + String(foundDevices.size()));
-            
-            tft.fillRect(20, 80, 100, 20, bruceConfig.bgColor);
-            tft.setCursor(20, 80);
-            tft.print("Time: " + String(elapsedSeconds) + "s");
-            
-            int barWidth = tftWidth - 40;
-            tft.fillRect(20, 140, barWidth, 10, TFT_DARKGREY);
-            barPos = (barPos + 5) % (barWidth - 20);
-            tft.fillRect(20 + barPos, 140, 20, 10, TFT_GREEN);
-        }
+        tft.fillRect(20, 140, barWidth, 10, TFT_DARKGREY);
+        tft.fillRect(20, 140, progress, 10, TFT_GREEN);
         
-        if(check(EscPress) || elapsedSeconds >= 30) {
+        if(check(EscPress)) {
             pScan->stop();
-            scanning = false;
+            scanStopped = true;
             break;
         }
         
-        delay(10);
+        delay(100);
     }
     
+    NimBLEScanResults results = pScan->getResults();
     pScan->clearResults();
+    
+    int deviceCount = results.getCount();
+    for(int i = 0; i < deviceCount; i++) {
+        const NimBLEAdvertisedDevice* device = results.getDevice(i);
+        if(!device) continue;
+        
+        BLE_Device dev;
+        dev.address = device->getAddress().toString();
+        dev.name = device->getName();
+        if(dev.name.empty()) dev.name = "<no name>";
+        dev.rssi = device->getRSSI();
+        
+        foundDevices.push_back(dev);
+    }
+    
+    tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
+    tft.setCursor(20, 80);
+    tft.print("Found: " + String(foundDevices.size()));
     
     if(foundDevices.empty()) {
         displayMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
