@@ -220,11 +220,11 @@ String selectTargetFromScan(const char* title) {
     
     pScan->clearResults();
     
-    pScan->setScanCallbacks(&scanCallbacks, false);
+    pScan->setScanCallbacks(&scanCallbacks, true);
     pScan->setActiveScan(true);
-    pScan->setInterval(100);
-    pScan->setWindow(50);
-    pScan->setDuplicateFilter(false);
+    pScan->setInterval(150);
+    pScan->setWindow(75);
+    pScan->setDuplicateFilter(true);
     pScan->setMaxResults(0);
     
     tft.fillScreen(bruceConfig.bgColor);
