@@ -3,6 +3,8 @@
 #include <globals.h>
 #include "core/display.h"
 
+extern int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true);
+
 void AudioCommandService::AudioCmdCallbacks::onWrite(NimBLECharacteristic* pCharacteristic) {
     std::string value = pCharacteristic->getValue();
     if(value.length() > 0) {
@@ -68,7 +70,7 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
 
     NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient->connect(target)) {
-        displayMessage("Failed to connect", "", "", "", TFT_WHITE);
+        showAdaptiveMessage("Failed to connect", "OK", "", "", TFT_WHITE);
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
@@ -80,7 +82,7 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID("19B10000-E8F2-537E-4F6C-D104768A1214"));
     if(!pService) pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
     if(!pService) {
-        displayMessage("No audio service", "", "", "", TFT_WHITE);
+        showAdaptiveMessage("No audio service", "OK", "", "", TFT_WHITE);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
@@ -112,18 +114,27 @@ void audioCommandHijackTest() {
     drawMainBorderWithTitle("AUDIO CMD HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     
-    String selectedMAC = selectTargetFromScan("SELECT TARGET");
-    if(selectedMAC.isEmpty()) return;
+    String selectedInfo = selectTargetFromScan("SELECT TARGET");
+    if(selectedInfo.isEmpty()) return;
     
-    NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
+    int colonPos = selectedInfo.lastIndexOf(':');
+    if(colonPos == -1) {
+        showAdaptiveMessage("Invalid device info", "OK", "", "", TFT_RED);
+        return;
+    }
+    
+    String selectedMAC = selectedInfo.substring(0, colonPos);
+    uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+    
+    NimBLEAddress target(selectedMAC.c_str(), addrType);
     
     if(!requireSimpleConfirmation("Start audio CMD hijack?")) return;
     
     bool success = attemptAudioCommandHijack(target);
     
     if(success) {
-        displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
+        showAdaptiveMessage("SUCCESS! Audio commands sent", "OK", "", "", TFT_GREEN);
     } else {
-        displayMessage("FAILED", "No audio service", "", "", TFT_RED);
+        showAdaptiveMessage("FAILED - No audio service", "OK", "", "", TFT_RED);
     }
 }
