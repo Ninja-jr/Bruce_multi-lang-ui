@@ -113,13 +113,7 @@ void audioCommandHijackTest() {
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     String selectedMAC = selectTargetFromScan("SELECT TARGET");
     if(selectedMAC.isEmpty()) return;
-    NimBLEAddress target;
-    try {
-        target = NimBLEAddress(selectedMAC.c_str());
-    } catch (...) {
-        displayMessage("Invalid MAC address", "OK", "", "", TFT_RED);
-        return;
-    }
+    NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
     if(!requireSimpleConfirmation("Start audio CMD hijack?")) return;
     bool success = attemptAudioCommandHijack(target);
     if(success) displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
