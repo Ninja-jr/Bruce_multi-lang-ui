@@ -336,9 +336,7 @@ String selectTargetFromScan(const char* title) {
     
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Scanning... 20s");
-    tft.setCursor(20, 80);
-    tft.print("Found: 0");
+    tft.print("Scanning for 20s...");
     
     BLEDevice::init("");
     BLEScan* pBLEScan = BLEDevice::getScan();
@@ -355,37 +353,24 @@ String selectTargetFromScan(const char* title) {
     uint32_t scanStartTime = millis();
     uint32_t scanDuration = 20000;
     bool scanCancelled = false;
-    uint32_t foundCount = 0;
     
-    class ScanCallback : public NimBLEScanCallbacks {
-    private:
-        uint32_t* foundCount;
-        
-    public:
-        ScanCallback(uint32_t* count) : foundCount(count) {}
-        
-        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
-            (*foundCount)++;
-        }
-    };
+    tft.setCursor(20, 80);
+    tft.print("Press ESC to cancel");
     
-    ScanCallback scanCallback(&foundCount);
-    pBLEScan->setScanCallbacks(&scanCallback);
+    pBLEScan->start(scanDuration / 1000, false);
     
-    pBLEScan->start(0, true);
-    
-    while(millis() - scanStartTime < scanDuration && !scanCancelled) {
+    uint32_t lastUpdate = millis();
+    while (millis() - scanStartTime < scanDuration && !scanCancelled) {
         uint32_t remaining = (scanStartTime + scanDuration - millis()) / 1000;
         
-        tft.fillRect(20, 60, 200, 20, bruceConfig.bgColor);
-        tft.setCursor(20, 60);
-        tft.print("Scanning... " + String(remaining) + "s");
+        if (millis() - lastUpdate > 1000) {
+            tft.fillRect(20, 60, 200, 20, bruceConfig.bgColor);
+            tft.setCursor(20, 60);
+            tft.print("Scanning: " + String(remaining) + "s");
+            lastUpdate = millis();
+        }
         
-        tft.fillRect(20, 80, 100, 20, bruceConfig.bgColor);
-        tft.setCursor(20, 80);
-        tft.print("Found: " + String(foundCount));
-        
-        if(check(EscPress)) {
+        if (check(EscPress)) {
             scanCancelled = true;
             pBLEScan->stop();
             break;
@@ -394,45 +379,54 @@ String selectTargetFromScan(const char* title) {
         delay(100);
     }
     
-    pBLEScan->stop();
-    BLEScanResults foundDevices = pBLEScan->getResults();
-    pBLEScan->clearResults();
+    if (!scanCancelled) {
+        pBLEScan->stop();
+    }
     
-    if(scanCancelled) {
+    NimBLEScanResults foundDevices = pBLEScan->getResults();
+    
+    if (scanCancelled) {
         showAdaptiveMessage("Scan cancelled", "OK", "", "", TFT_YELLOW);
         delay(1000);
+        pBLEScan->clearResults();
         return "";
     }
+    
+    int deviceCount = foundDevices.getCount();
     
     tft.fillRect(20, 60, 200, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Scan complete!");
     tft.setCursor(20, 80);
-    tft.print("Found: " + String(foundDevices.getCount()));
+    tft.print("Found: " + String(deviceCount));
     delay(1000);
     
-    int deviceCount = foundDevices.getCount();
-    
-    if(deviceCount == 0) {
+    if (deviceCount == 0) {
         showAdaptiveMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
         delay(1500);
+        pBLEScan->clearResults();
         return "";
     }
     
-    for(int i = 0; i < deviceCount; i++) {
+    for (int i = 0; i < deviceCount; i++) {
         const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
-        if(!device) continue;
+        if (!device) continue;
         
         String name = device->getName().c_str();
         String address = device->getAddress().toString().c_str();
         uint8_t addrType = device->getAddressType();
         
-        if(name.isEmpty()) name = address;
+        if (name.isEmpty()) name = address;
         
         String displayText = name;
-        if(displayText.length() > 20) {
+        if (displayText.length() > 20) {
             displayText = displayText.substring(0, 17) + "...";
         }
+        
+        String finalName = name;
+        String finalAddress = address;
+        uint8_t finalAddrType = addrType;
+        int finalRSSI = device->getRSSI();
         
         deviceOptions.push_back({displayText.c_str(), [=, &selectedMAC, &selectedAddrType]() {
             tft.fillScreen(bruceConfig.bgColor);
@@ -442,19 +436,19 @@ String selectTargetFromScan(const char* title) {
             tft.fillRect(20, 50, tftWidth - 40, 150, bruceConfig.bgColor);
             
             tft.setCursor(20, 60);
-            tft.print("Name: " + name);
+            tft.print("Name: " + finalName);
             
             tft.setCursor(20, 90);
-            tft.print("MAC: " + address);
+            tft.print("MAC: " + finalAddress);
             
             tft.setCursor(20, 120);
-            tft.print("RSSI: " + String(device->getRSSI()) + " dBm");
+            tft.print("RSSI: " + String(finalRSSI) + " dBm");
             
             tft.setCursor(20, 150);
             tft.print("Type: ");
-            if(addrType == BLE_ADDR_PUBLIC) {
+            if (finalAddrType == BLE_ADDR_PUBLIC) {
                 tft.print("Public");
-            } else if(addrType == BLE_ADDR_RANDOM) {
+            } else if (finalAddrType == BLE_ADDR_RANDOM) {
                 tft.print("Random");
             } else {
                 tft.print("Unknown");
@@ -465,13 +459,13 @@ String selectTargetFromScan(const char* title) {
             tft.setCursor(20, 210);
             tft.print("ESC: Back to list");
             
-            while(true) {
-                if(check(EscPress)) {
+            while (true) {
+                if (check(EscPress)) {
                     break;
                 }
-                if(check(SelPress)) {
-                    selectedMAC = address;
-                    selectedAddrType = addrType;
+                if (check(SelPress)) {
+                    selectedMAC = finalAddress;
+                    selectedAddrType = finalAddrType;
                     break;
                 }
                 delay(50);
@@ -481,11 +475,13 @@ String selectTargetFromScan(const char* title) {
     
     deviceOptions.push_back({"[Back]", []() {}});
     
-    if(deviceOptions.size() > 1) {
+    if (deviceOptions.size() > 1) {
         loopOptions(deviceOptions, MENU_TYPE_SUBMENU, "SELECT DEVICE", 0, false);
     }
     
-    if(!selectedMAC.isEmpty()) {
+    pBLEScan->clearResults();
+    
+    if (!selectedMAC.isEmpty()) {
         return selectedMAC + ":" + String(selectedAddrType);
     }
     
