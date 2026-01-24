@@ -6,7 +6,7 @@
 #include "core/mykeyboard.h"
 #include "core/utils.h"
 #include "esp_mac.h"
-#include "modules/NRF24/nrf_jammer.h"
+#include "modules/NRF24/nrf_jammer_api.h"
 
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
@@ -39,7 +39,7 @@ public:
         
         NimBLEAdvertisementData advertData;
         advertData.setFlags(0x06);
-        advertData.addData(std::string((char*)jamData, 31));
+        advertData.addData(jamData, 31);
         
         pAdvertising->setAdvertisementData(advertData);
         pAdvertising->setMinInterval(0x0020);
@@ -610,10 +610,15 @@ void testFastPairVulnerability() {
 
 void disconnectAndExploit(NimBLEAddress target, bool useNRF24 = false) {
     if(useNRF24) {
-        showAdaptiveMessage("NRF24 Jammer starting...", "", "", "", TFT_YELLOW, false);
-        startJammer();
-        showAdaptiveMessage("NRF24 JAMMING", "Jamming for 3s...", "", "", TFT_YELLOW, false);
-        delay(3000);
+        if(isNRF24Available()) {
+            showAdaptiveMessage("NRF24 Jammer starting...", "", "", "", TFT_YELLOW, false);
+            startJammer();
+            showAdaptiveMessage("NRF24 JAMMING", "Jamming for 3s...", "", "", TFT_YELLOW, false);
+            delay(3000);
+        } else {
+            showAdaptiveMessage("NRF24 module not found", "Using BLE jammer", "", "", TFT_YELLOW);
+            useNRF24 = false;
+        }
     }
     
     if(!useNRF24) {
@@ -783,6 +788,11 @@ void bleJammerMenu() {
 }
 
 void nrf24JammerMenu() {
+    if(!isNRF24Available()) {
+        showAdaptiveMessage("NRF24 module not found", "Connect module and restart", "OK", "", TFT_RED);
+        return;
+    }
+    
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("NRF24 JAMMER");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -969,10 +979,22 @@ void whisperPairMenu() {
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         tft.setCursor(20, 60);
         tft.print("Which jammer to use?");
-        tft.setCursor(20, 90);
-        tft.print("1. NRF24 (better)");
-        tft.setCursor(20, 120);
-        tft.print("2. BLE (fallback)");
+        
+        if(isNRF24Available()) {
+            tft.setCursor(20, 90);
+            tft.print("1. NRF24 (better)");
+            tft.setCursor(20, 120);
+            tft.print("2. BLE (fallback)");
+        } else {
+            tft.setCursor(20, 90);
+            tft.print("NRF24 not detected");
+            tft.setCursor(20, 120);
+            tft.print("Using BLE jammer");
+            delay(1500);
+            disconnectAndExploit(target, false);
+            return;
+        }
+        
         tft.setCursor(20, 160);
         tft.print("SEL: Select  ESC: Cancel");
 
