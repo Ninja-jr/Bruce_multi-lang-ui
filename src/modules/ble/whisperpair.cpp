@@ -647,129 +647,150 @@ void jamAndConnectMenu() {
         }
     }
     
-    tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle("JAM & CONNECT");
-    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("NRF24L01+ Module");
-    tft.setCursor(20, 90);
-    tft.print("Status: READY");
-    tft.setCursor(20, 120);
-    tft.print("1. Start Jam & Scan");
-    tft.setCursor(20, 150);
-    tft.print("2. Jam & Exploit");
-    tft.setCursor(20, 180);
-    tft.print("3. Aggressive Attack");
-    tft.setCursor(20, 210);
-    tft.print("SEL: Select  ESC: Back");
-
-    int selection = 0;
-    bool redraw = true;
-
-    while(true) {
-        if(check(EscPress)) return;
-
-        if(redraw) {
-            tft.fillRect(20, 230, tftWidth - 40, 30, bruceConfig.bgColor);
-            tft.setCursor(20, 230);
-            if(selection == 0) tft.print(">> Start Jam & Scan");
-            else if(selection == 1) tft.print(">> Jam & Exploit");
-            else tft.print(">> Aggressive Attack");
-            redraw = false;
+    const char* jamModeNames[] = {
+        "BLE Adv Only",
+        "All BLE Channels",
+        "BLE Adv Priority",
+        "Bluetooth All",
+        "WiFi",
+        "USB",
+        "Video",
+        "RC",
+        "Full Spectrum"
+    };
+    
+    std::vector<Option> jamOptions;
+    
+    jamOptions.push_back({"[Scan then Jam Connect]", [&]() {
+        String selectedInfo = selectTargetFromScan("SCAN TARGET");
+        if(selectedInfo.isEmpty()) return;
+        
+        int colonPos = selectedInfo.lastIndexOf(':');
+        String selectedMAC = selectedInfo.substring(0, colonPos);
+        uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+        NimBLEAddress target(selectedMAC.c_str(), addrType);
+        
+        if(requireSimpleConfirmation("Jam while connecting?")) {
+            showAdaptiveMessage(("Jamming: " + String(jamModeNames[getCurrentJammerMode()])).c_str(), 
+                               "Attempting connection...", "", "", TFT_YELLOW, false);
+            
+            startJammer();
+            
+            unsigned long startTime = millis();
+            NimBLEClient* pClient = NimBLEDevice::createClient();
+            pClient->setConnectTimeout(5);
+            
+            bool connected = false;
+            while(millis() - startTime < 5000 && !connected) {
+                updateJammerChannel();
+                
+                if(pClient->connect(target, false)) {
+                    connected = true;
+                    showAdaptiveMessage("Connected!", "Running exploit...", "", "", TFT_WHITE, false);
+                    runExploitOnConnectedDevice(pClient, target);
+                    pClient->disconnect();
+                    break;
+                }
+                delay(100);
+            }
+            
+            if(!connected) {
+                showAdaptiveMessage("Connection failed", "Device may be paired", "or out of range", "OK", TFT_RED);
+            }
+            
+            stopJammer();
+            NimBLEDevice::deleteClient(pClient);
         }
-
-        if(check(PrevPress)) {
-            if(selection > 0) {
-                selection--;
-                redraw = true;
-            }
-        }
-        if(check(NextPress)) {
-            if(selection < 2) {
-                selection++;
-                redraw = true;
-            }
-        }
-
-        if(check(SelPress)) {
-            if(selection == 0) {
-                showAdaptiveMessage("Starting jammer...", "Scanning in 3s", "", "", TFT_YELLOW, false);
-                startJammer();
-                delay(3000);
-                
-                String selectedInfo = selectTargetFromScan("JAM & SCAN MODE");
-                
-                stopJammer();
-                
-                if(!selectedInfo.isEmpty()) {
-                    int colonPos = selectedInfo.lastIndexOf(':');
-                    String selectedMAC = selectedInfo.substring(0, colonPos);
-                    uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
-                    NimBLEAddress target(selectedMAC.c_str(), addrType);
-                    
-                    if(requireSimpleConfirmation("Run exploit on device?")) {
-                        aggressiveJamAndExploit(target);
-                    }
-                }
-            }
-            else if(selection == 1) {
-                initBLEIfNeeded("Bruce-WP-JAM");
-                
-                String selectedInfo = selectTargetFromScan("SELECT TARGET");
-                if(selectedInfo.isEmpty()) return;
-                
-                int colonPos = selectedInfo.lastIndexOf(':');
-                if(colonPos == -1) {
-                    showAdaptiveMessage("Invalid device info", "OK", "", "", TFT_RED);
-                    return;
-                }
-                
-                String selectedMAC = selectedInfo.substring(0, colonPos);
-                uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
-                
-                NimBLEAddress target;
-                try {
-                    target = NimBLEAddress(selectedMAC.c_str(), addrType);
-                } catch (...) {
-                    showAdaptiveMessage("Invalid MAC address", "OK", "", "", TFT_RED);
-                    return;
-                }
-                
-                if(requireSimpleConfirmation("Start jam and exploit?")) {
-                    aggressiveJamAndExploit(target);
-                }
-            }
-            else if(selection == 2) {
-                initBLEIfNeeded("Bruce-WP-ATTACK");
-                
-                String selectedInfo = selectTargetFromScan("SELECT TARGET");
-                if(selectedInfo.isEmpty()) return;
-                
-                int colonPos = selectedInfo.lastIndexOf(':');
-                if(colonPos == -1) {
-                    showAdaptiveMessage("Invalid device info", "OK", "", "", TFT_RED);
-                    return;
-                }
-                
-                String selectedMAC = selectedInfo.substring(0, colonPos);
-                uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
-                
-                NimBLEAddress target;
-                try {
-                    target = NimBLEAddress(selectedMAC.c_str(), addrType);
-                } catch (...) {
-                    showAdaptiveMessage("Invalid MAC address", "OK", "", "", TFT_RED);
-                    return;
-                }
-                
-                if(requireSimpleConfirmation("Start aggressive attack?")) {
-                    aggressiveJamAndExploit(target);
-                }
-            }
+    }});
+    
+    jamOptions.push_back({"[Jam Burst Attack]", [&]() {
+        String selectedInfo = selectTargetFromScan("SELECT TARGET");
+        if(selectedInfo.isEmpty()) return;
+        
+        int colonPos = selectedInfo.lastIndexOf(':');
+        String selectedMAC = selectedInfo.substring(0, colonPos);
+        uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+        
+        NimBLEAddress target;
+        try {
+            target = NimBLEAddress(selectedMAC.c_str(), addrType);
+        } catch (...) {
+            showAdaptiveMessage("Invalid MAC address", "OK", "", "", TFT_RED);
             return;
         }
-        delay(50);
-    }
+        
+        if(requireSimpleConfirmation("Start jam burst attack?")) {
+            aggressiveJamAndExploit(target);
+        }
+    }});
+    
+    jamOptions.push_back({"[Set Jammer Mode]", [&]() {
+        tft.fillScreen(bruceConfig.bgColor);
+        drawMainBorderWithTitle("JAMMER MODE");
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        
+        tft.setCursor(20, 60);
+        tft.print("Current: ");
+        tft.print(jamModeNames[getCurrentJammerMode()]);
+        
+        int yPos = 90;
+        for(int i = 0; i < 5; i++) {
+            tft.setCursor(20, yPos);
+            tft.print(String(i+1) + ". " + jamModeNames[i]);
+            yPos += 20;
+        }
+        
+        tft.setCursor(20, yPos);
+        tft.print("SEL: Select  ESC: Back");
+        
+        int selection = getCurrentJammerMode();
+        bool redraw = true;
+        
+        while(true) {
+            if(check(EscPress)) return;
+            
+            if(redraw) {
+                tft.fillRect(20, 210, tftWidth - 40, 30, bruceConfig.bgColor);
+                tft.setCursor(20, 210);
+                tft.print(">> " + String(jamModeNames[selection]));
+                redraw = false;
+            }
+            
+            if(check(PrevPress)) {
+                if(selection > 0) {
+                    selection--;
+                    redraw = true;
+                }
+            }
+            if(check(NextPress)) {
+                if(selection < 8) {
+                    selection++;
+                    redraw = true;
+                }
+            }
+            
+            if(check(SelPress)) {
+                setJammerMode(selection);
+                showAdaptiveMessage(("Jam mode set to: " + String(jamModeNames[selection])).c_str(), 
+                                   "OK", "", "", TFT_GREEN);
+                delay(1000);
+                return;
+            }
+            
+            delay(50);
+        }
+    }});
+    
+    jamOptions.push_back({"[Jammer Status]", [&]() {
+        showAdaptiveMessage("NRF24 Jammer Status", 
+                           ("Mode: " + String(jamModeNames[getCurrentJammerMode()])).c_str(),
+                           "Channel: Hopping",
+                           "OK", TFT_YELLOW);
+    }});
+    
+    jamOptions.push_back({"[Back]", []() {}});
+    
+    loopOptions(jamOptions, MENU_TYPE_SUBMENU, "JAM & CONNECT", 0, false);
 }
 
 void whisperPairMenu() {
