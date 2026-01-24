@@ -2,6 +2,9 @@
 #include "whisperpair_audio.h"
 #include <globals.h>
 #include "core/display.h"
+#include "core/mykeyboard.h"
+#include "core/utils.h"
+#include "esp_mac.h"
 
 #ifdef CONFIG_BT_NIMBLE_ENABLED
 #if __has_include(<NimBLEExtAdvertising.h>)
@@ -137,9 +140,9 @@ String selectTargetFromScan(const char* title) {
     std::vector<BLE_Device> foundDevices;
     bool scanning = false;
     
-    BLEDevice::init("");
+    NimBLEDevice::init("");
     
-    BLEScan* pScan = BLEDevice::getScan();
+    NimBLEScan* pScan = NimBLEDevice::getScan();
     if (!pScan) {
         displayMessage("Scanner init failed", "OK", "", "", TFT_RED);
         return "";
