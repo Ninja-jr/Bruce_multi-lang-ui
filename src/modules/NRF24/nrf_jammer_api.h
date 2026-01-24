@@ -6,5 +6,8 @@
 bool isNRF24Available();
 void startJammer();
 void stopJammer();
+void setJammerMode(int modeIndex);
+int getCurrentJammerMode();
+void updateJammerChannel();
 
 #endif
