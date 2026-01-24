@@ -359,7 +359,7 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 80);
     tft.print("ESC: Cancel scan");
     
-    NimBLEScanResults foundDevices = pBLEScan->start(scanDuration / 1000, false);
+    pBLEScan->start(scanDuration / 1000, false);
     
     uint32_t lastUpdate = millis();
     while (millis() - scanStartTime < scanDuration && !scanCancelled) {
@@ -381,10 +381,11 @@ String selectTargetFromScan(const char* title) {
         delay(100);
     }
     
-    if (!scanCancelled && !foundDevices.getCount()) {
+    if (!scanCancelled) {
         pBLEScan->stop();
-        foundDevices = pBLEScan->getResults();
     }
+    
+    NimBLEScanResults foundDevices = pBLEScan->getResults();
     
     if (scanCancelled) {
         showAdaptiveMessage("Scan cancelled", "OK", "", "", TFT_YELLOW);
@@ -418,13 +419,13 @@ String selectTargetFromScan(const char* title) {
     
     std::vector<DeviceInfo> devices;
     for (int i = 0; i < deviceCount; i++) {
-        NimBLEAdvertisedDevice device = foundDevices.getDevice(i);
-        if (!device.isAdvertising()) continue;
+        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
+        if (!device) continue;
         
-        String name = device.getName().c_str();
-        String address = device.getAddress().toString().c_str();
-        uint8_t addrType = device.getAddressType();
-        int rssi = device.getRSSI();
+        String name = device->getName().c_str();
+        String address = device->getAddress().toString().c_str();
+        uint8_t addrType = device->getAddressType();
+        int rssi = device->getRSSI();
         
         if (name.isEmpty() || name == "(null)" || name == "null") {
             name = address;
