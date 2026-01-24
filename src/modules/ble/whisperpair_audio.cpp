@@ -111,11 +111,19 @@ void audioCommandHijackTest() {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("AUDIO CMD HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    
     String selectedMAC = selectTargetFromScan("SELECT TARGET");
     if(selectedMAC.isEmpty()) return;
+    
     NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
+    
     if(!requireSimpleConfirmation("Start audio CMD hijack?")) return;
+    
     bool success = attemptAudioCommandHijack(target);
-    if(success) displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
-    else displayMessage("FAILED", "No audio service", "", "", TFT_RED);
+    
+    if(success) {
+        displayMessage("SUCCESS!", "Audio commands sent", "", "", TFT_GREEN);
+    } else {
+        displayMessage("FAILED", "No audio service", "", "", TFT_RED);
+    }
 }
