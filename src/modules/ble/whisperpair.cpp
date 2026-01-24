@@ -347,17 +347,19 @@ String selectTargetFromScan(const char* title) {
     
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(100);
-    pBLEScan->setWindow(99);
+    pBLEScan->setInterval(80);
+    pBLEScan->setWindow(60);
+    pBLEScan->setMaxResults(0);
+    pBLEScan->setDuplicateFilter(false);
     
     uint32_t scanStartTime = millis();
     uint32_t scanDuration = 20000;
     bool scanCancelled = false;
     
     tft.setCursor(20, 80);
-    tft.print("Press ESC to cancel");
+    tft.print("ESC: Cancel scan");
     
-    pBLEScan->start(scanDuration / 1000, false);
+    NimBLEScanResults foundDevices = pBLEScan->start(scanDuration / 1000, false);
     
     uint32_t lastUpdate = millis();
     while (millis() - scanStartTime < scanDuration && !scanCancelled) {
@@ -379,11 +381,10 @@ String selectTargetFromScan(const char* title) {
         delay(100);
     }
     
-    if (!scanCancelled) {
+    if (!scanCancelled && !foundDevices.getCount()) {
         pBLEScan->stop();
+        foundDevices = pBLEScan->getResults();
     }
-    
-    NimBLEScanResults foundDevices = pBLEScan->getResults();
     
     if (scanCancelled) {
         showAdaptiveMessage("Scan cancelled", "OK", "", "", TFT_YELLOW);
@@ -408,25 +409,46 @@ String selectTargetFromScan(const char* title) {
         return "";
     }
     
+    struct DeviceInfo {
+        String name;
+        String address;
+        uint8_t addrType;
+        int rssi;
+    };
+    
+    std::vector<DeviceInfo> devices;
     for (int i = 0; i < deviceCount; i++) {
-        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
-        if (!device) continue;
+        NimBLEAdvertisedDevice device = foundDevices.getDevice(i);
+        if (!device.isAdvertising()) continue;
         
-        String name = device->getName().c_str();
-        String address = device->getAddress().toString().c_str();
-        uint8_t addrType = device->getAddressType();
+        String name = device.getName().c_str();
+        String address = device.getAddress().toString().c_str();
+        uint8_t addrType = device.getAddressType();
+        int rssi = device.getRSSI();
         
-        if (name.isEmpty()) name = address;
-        
-        String displayText = name;
-        if (displayText.length() > 20) {
-            displayText = displayText.substring(0, 17) + "...";
+        if (name.isEmpty() || name == "(null)" || name == "null") {
+            name = address;
         }
         
-        String finalName = name;
-        String finalAddress = address;
-        uint8_t finalAddrType = addrType;
-        int finalRSSI = device->getRSSI();
+        devices.push_back({name, address, addrType, rssi});
+    }
+    
+    std::sort(devices.begin(), devices.end(), [](const DeviceInfo& a, const DeviceInfo& b) {
+        return a.rssi > b.rssi;
+    });
+    
+    for (const auto& dev : devices) {
+        String displayText = dev.name;
+        
+        if (dev.name == dev.address) {
+            if (dev.address.length() > 8) {
+                displayText = dev.address.substring(0, 8) + "...";
+            }
+        } else if (displayText.length() > 15) {
+            displayText = displayText.substring(0, 12) + "...";
+        }
+        
+        displayText += " (" + String(dev.rssi) + "dB)";
         
         deviceOptions.push_back({displayText.c_str(), [=, &selectedMAC, &selectedAddrType]() {
             tft.fillScreen(bruceConfig.bgColor);
@@ -436,19 +458,24 @@ String selectTargetFromScan(const char* title) {
             tft.fillRect(20, 50, tftWidth - 40, 150, bruceConfig.bgColor);
             
             tft.setCursor(20, 60);
-            tft.print("Name: " + finalName);
+            if (dev.name == dev.address) {
+                tft.print("MAC: " + dev.address);
+                tft.setCursor(20, 90);
+                tft.print("RSSI: " + String(dev.rssi) + " dBm");
+                tft.setCursor(20, 120);
+            } else {
+                tft.print("Name: " + dev.name);
+                tft.setCursor(20, 90);
+                tft.print("MAC: " + dev.address);
+                tft.setCursor(20, 120);
+                tft.print("RSSI: " + String(dev.rssi) + " dBm");
+                tft.setCursor(20, 150);
+            }
             
-            tft.setCursor(20, 90);
-            tft.print("MAC: " + finalAddress);
-            
-            tft.setCursor(20, 120);
-            tft.print("RSSI: " + String(finalRSSI) + " dBm");
-            
-            tft.setCursor(20, 150);
             tft.print("Type: ");
-            if (finalAddrType == BLE_ADDR_PUBLIC) {
+            if (dev.addrType == BLE_ADDR_PUBLIC) {
                 tft.print("Public");
-            } else if (finalAddrType == BLE_ADDR_RANDOM) {
+            } else if (dev.addrType == BLE_ADDR_RANDOM) {
                 tft.print("Random");
             } else {
                 tft.print("Unknown");
@@ -457,15 +484,15 @@ String selectTargetFromScan(const char* title) {
             tft.setCursor(20, 190);
             tft.print("SEL: Connect to device");
             tft.setCursor(20, 210);
-            tft.print("ESC: Back to list");
+            tft.print("ESC: Back to device list");
             
             while (true) {
                 if (check(EscPress)) {
                     break;
                 }
                 if (check(SelPress)) {
-                    selectedMAC = finalAddress;
-                    selectedAddrType = finalAddrType;
+                    selectedMAC = dev.address;
+                    selectedAddrType = dev.addrType;
                     break;
                 }
                 delay(50);
@@ -511,7 +538,7 @@ void testFastPairVulnerability() {
         return;
     }
     
-    if(!requireSimpleConfirmation("Test vulnerability?")) return;
+    if(!requireSimpleConfirmation("Test vulnerability?\nSEL=Yes  ESC=No")) return;
     
     bool vulnerable = attemptKeyBasedPairing(target);
     
