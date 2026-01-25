@@ -334,53 +334,41 @@ String selectTargetFromScan(const char* title) {
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     
-    tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
+    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Scanning for 20 seconds...");
-    tft.setCursor(20, 80);
-    tft.print("Devices will show after scan");
-    tft.setCursor(20, 100);
-    tft.print("ESC: Cancel scan");
+    tft.print("Initializing BLE...");
     
     BLEDevice::init("");
     BLEScan* pBLEScan = BLEDevice::getScan();
+    
+    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    
     if (!pBLEScan) {
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
+        tft.print("BLE INIT FAIL");
         showAdaptiveMessage("Scanner init failed", "OK", "", "", TFT_RED);
         return "";
     }
+    
+    tft.setTextColor(TFT_GREEN, bruceConfig.bgColor);
+    tft.print("BLE INIT OK");
+    delay(1000);
     
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
     pBLEScan->setInterval(100);
     pBLEScan->setWindow(99);
     
-    uint32_t scanStartTime = millis();
-    uint32_t scanDuration = 20000;
-    bool scanCancelled = false;
+    tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("Scanning for 20s...");
+    tft.setCursor(20, 80);
+    tft.print("Please wait");
     
-    bool scanStarted = pBLEScan->start(scanDuration / 1000, false);
-    
-    while (millis() - scanStartTime < scanDuration && !scanCancelled) {
-        if (check(EscPress)) {
-            scanCancelled = true;
-            pBLEScan->stop();
-            break;
-        }
-        delay(50);
-    }
-    
-    if (!scanCancelled) {
-        pBLEScan->stop();
-    }
-    
-    NimBLEScanResults foundDevices = pBLEScan->getResults();
-    
-    if (scanCancelled) {
-        showAdaptiveMessage("Scan cancelled", "OK", "", "", TFT_YELLOW);
-        delay(1000);
-        pBLEScan->clearResults();
-        return "";
-    }
+    NimBLEScanResults foundDevices = pBLEScan->start(20, false);
+    pBLEScan->stop();
     
     int deviceCount = foundDevices.getCount();
     
@@ -407,13 +395,12 @@ String selectTargetFromScan(const char* title) {
     
     std::vector<DeviceInfo> devices;
     for (int i = 0; i < deviceCount; i++) {
-        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
-        if (!device) continue;
+        NimBLEAdvertisedDevice device = foundDevices.getDevice(i);
         
-        String name = device->getName().c_str();
-        String address = device->getAddress().toString().c_str();
-        uint8_t addrType = device->getAddressType();
-        int rssi = device->getRSSI();
+        String name = device.getName().c_str();
+        String address = device.getAddress().toString().c_str();
+        uint8_t addrType = device.getAddressType();
+        int rssi = device.getRSSI();
         
         if (name.isEmpty() || name == "(null)" || name == "null") {
             name = address;
