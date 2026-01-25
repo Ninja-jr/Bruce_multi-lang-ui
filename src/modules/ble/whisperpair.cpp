@@ -363,7 +363,7 @@ bool whisperPairEfficientExploit(NimBLEAddress target) {
             }
         }
     }
-    std::vector<NimBLERemoteCharacteristic*>* chars = pService->getCharacteristics();
+    const std::vector<NimBLERemoteCharacteristic*>* chars = pService->getCharacteristics();
     for(auto pChar : *chars) {
         String uuid = pChar->getUUID().toString().c_str();
         if(uuid.indexOf("1234") != -1 || uuid.indexOf("1236") != -1) continue;
@@ -431,7 +431,7 @@ bool bruteForceCharacteristics(NimBLEAddress target) {
         pClient->disconnect();
         return false;
     }
-    std::vector<NimBLERemoteCharacteristic*>* chars = pService->getCharacteristics();
+    const std::vector<NimBLERemoteCharacteristic*>* chars = pService->getCharacteristics();
     bool found = false;
     for(auto pChar : *chars) {
         if(pChar->canWrite()) {
