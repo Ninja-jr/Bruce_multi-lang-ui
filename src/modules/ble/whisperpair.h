@@ -35,4 +35,4 @@ void showWarningMessage(const char* message);
 void drawMainBorderWithTitle(const char* title);
 bool check(uint8_t key);
 extern struct BruceConfig bruceConfig;
-extern int tftWidth;
+extern volatile int tftWidth;
