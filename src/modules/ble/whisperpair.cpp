@@ -326,7 +326,6 @@ bool whisperPairFullExploit(NimBLEAddress target) {
 }
 
 String selectTargetFromScan(const char* title) {
-    std::vector<Option> deviceOptions;
     String selectedMAC = "";
     uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
     
@@ -401,29 +400,6 @@ String selectTargetFromScan(const char* title) {
     pBLEScan->stop();
     NimBLEScanResults foundDevices = pBLEScan->getResults();
     
-    std::vector<const NimBLEAdvertisedDevice*> devicesList;
-    for(int i = 0; i < foundDevices.getCount(); i++) {
-        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
-        if(device) devicesList.push_back(device);
-    }
-    
-    int deviceCount = devicesList.size();
-    pBLEScan->clearResults();
-    
-    tft.fillRect(20, 60, tftWidth - 40, 80, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("Scan complete!");
-    tft.setCursor(20, 80);
-    tft.printf("Found: %d device(s)", deviceCount);
-    
-    delay(1500);
-    
-    if (deviceCount == 0) {
-        showAdaptiveMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
-        delay(1500);
-        return "";
-    }
-    
     struct DeviceInfo {
         String name;
         String address;
@@ -432,94 +408,125 @@ String selectTargetFromScan(const char* title) {
     };
     
     std::vector<DeviceInfo> devices;
-    for (int i = 0; i < deviceCount; i++) {
-        const NimBLEAdvertisedDevice* device = devicesList[i];
-        if (!device) continue;
+    
+    for(int i = 0; i < foundDevices.getCount(); i++) {
+        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
+        if(!device) continue;
         
-        String name = device->getName().c_str();
-        String address = device->getAddress().toString().c_str();
-        uint8_t addrType = device->getAddressType();
-        int rssi = device->getRSSI();
+        DeviceInfo dev;
+        dev.name = device->getName().c_str();
+        dev.address = device->getAddress().toString().c_str();
+        dev.addrType = device->getAddressType();
+        dev.rssi = device->getRSSI();
         
-        if (name.isEmpty() || name == "(null)" || name == "null") {
-            name = address;
+        if (dev.name.isEmpty() || dev.name == "(null)" || dev.name == "null") {
+            dev.name = dev.address;
         }
         
-        devices.push_back({name, address, addrType, rssi});
+        devices.push_back(dev);
+    }
+    
+    pBLEScan->clearResults();
+    
+    tft.fillRect(20, 60, tftWidth - 40, 80, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("Scan complete!");
+    tft.setCursor(20, 80);
+    tft.printf("Found: %d device(s)", devices.size());
+    
+    delay(1500);
+    
+    if (devices.empty()) {
+        showAdaptiveMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
+        delay(1500);
+        return "";
     }
     
     std::sort(devices.begin(), devices.end(), [](const DeviceInfo& a, const DeviceInfo& b) {
         return a.rssi > b.rssi;
     });
     
-    for (const auto& dev : devices) {
-        String displayText = dev.name;
+    const int maxDevices = min((int)devices.size(), 6);
+    int selectedIdx = 0;
+    bool exitLoop = false;
+    
+    while(!exitLoop) {
+        tft.fillScreen(bruceConfig.bgColor);
+        drawMainBorderWithTitle("SELECT DEVICE");
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         
-        if (dev.name == dev.address) {
-            if (dev.address.length() > 8) {
-                displayText = dev.address.substring(0, 8) + "...";
+        int yPos = 60;
+        for(int i = 0; i < maxDevices; i++) {
+            const auto& dev = devices[i];
+            String displayText = dev.name;
+            
+            if(displayText.length() > 18) {
+                displayText = displayText.substring(0, 15) + "...";
             }
-        } else if (displayText.length() > 15) {
-            displayText = displayText.substring(0, 12) + "...";
+            displayText += " (" + String(dev.rssi) + "dB)";
+            
+            if(i == selectedIdx) {
+                tft.fillRect(20, yPos, tftWidth - 40, 22, TFT_WHITE);
+                tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            } else {
+                tft.fillRect(20, yPos, tftWidth - 40, 22, bruceConfig.bgColor);
+                tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+            }
+            
+            tft.setCursor(25, yPos + 6);
+            tft.print(displayText);
+            yPos += 24;
         }
         
-        displayText += " (" + String(dev.rssi) + "dB)";
+        tft.setCursor(20, yPos + 10);
+        tft.print("UP/DOWN: Select  SEL: Connect  ESC: Back");
         
-        deviceOptions.push_back({displayText.c_str(), [=, &selectedMAC, &selectedAddrType]() {
-            tft.fillScreen(bruceConfig.bgColor);
-            drawMainBorderWithTitle("DEVICE INFO");
-            tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-            
-            tft.fillRect(20, 50, tftWidth - 40, 150, bruceConfig.bgColor);
-            
-            tft.setCursor(20, 60);
-            if (dev.name == dev.address) {
-                tft.print("MAC: " + dev.address);
-                tft.setCursor(20, 90);
-                tft.print("RSSI: " + String(dev.rssi) + " dBm");
-                tft.setCursor(20, 120);
-            } else {
-                tft.print("Name: " + dev.name);
-                tft.setCursor(20, 90);
-                tft.print("MAC: " + dev.address);
-                tft.setCursor(20, 120);
-                tft.print("RSSI: " + String(dev.rssi) + " dBm");
-                tft.setCursor(20, 150);
-            }
-            
-            tft.print("Type: ");
-            if (dev.addrType == BLE_ADDR_PUBLIC) {
-                tft.print("Public");
-            } else if (dev.addrType == BLE_ADDR_RANDOM) {
-                tft.print("Random");
-            } else {
-                tft.print("Unknown");
-            }
-            
-            tft.setCursor(20, 190);
-            tft.print("SEL: Connect to device");
-            tft.setCursor(20, 210);
-            tft.print("ESC: Back to device list");
-            
-            while (true) {
-                if (check(EscPress)) {
-                    break;
+        unsigned long inputWaitStart = millis();
+        bool gotInput = false;
+        
+        while(!gotInput && millis() - inputWaitStart < 30000) {
+            if(check(PrevPress)) {
+                if(selectedIdx > 0) {
+                    selectedIdx--;
                 }
-                if (check(SelPress)) {
-                    selectedMAC = dev.address;
-                    selectedAddrType = dev.addrType;
-                    break;
-                }
-                delay(50);
+                gotInput = true;
+                delay(200);
             }
-        }});
+            else if(check(NextPress)) {
+                if(selectedIdx < maxDevices - 1) {
+                    selectedIdx++;
+                }
+                gotInput = true;
+                delay(200);
+            }
+            else if(check(SelPress)) {
+                tft.fillRect(20, yPos + 40, tftWidth - 40, 30, bruceConfig.bgColor);
+                tft.setCursor(20, yPos + 40);
+                tft.print("Connecting...");
+                delay(500);
+                
+                selectedMAC = devices[selectedIdx].address;
+                selectedAddrType = devices[selectedIdx].addrType;
+                exitLoop = true;
+                gotInput = true;
+            }
+            else if(check(EscPress)) {
+                exitLoop = true;
+                gotInput = true;
+            }
+            
+            if(!gotInput) {
+                delay(10);
+            }
+        }
+        
+        if(millis() - inputWaitStart >= 30000) {
+            showAdaptiveMessage("Selection timeout", "OK", "", "", TFT_YELLOW);
+            break;
+        }
     }
     
-    deviceOptions.push_back({"[Back]", []() {}});
-    
-    if (deviceOptions.size() > 1) {
-        loopOptions(deviceOptions, MENU_TYPE_SUBMENU, "SELECT DEVICE", 0, false);
-    }
+    NimBLEDevice::deinit(true);
     
     if (!selectedMAC.isEmpty()) {
         return selectedMAC + ":" + String(selectedAddrType);
@@ -738,34 +745,45 @@ void jamAndConnectMenu() {
     }});
     
     jamOptions.push_back({"[Set Jammer Mode]", [&]() {
-        tft.fillScreen(bruceConfig.bgColor);
-        drawMainBorderWithTitle("JAMMER MODE");
-        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        
-        tft.setCursor(20, 60);
-        tft.print("Current: ");
-        tft.print(jamModeNames[getCurrentJammerMode()]);
-        
-        int yPos = 90;
-        for(int i = 0; i < 5; i++) {
-            tft.setCursor(20, yPos);
-            tft.print(String(i+1) + ". " + jamModeNames[i]);
-            yPos += 20;
-        }
-        
-        tft.setCursor(20, yPos);
-        tft.print("SEL: Select  ESC: Back");
+        const char* jamModeNames[] = {
+            "BLE Adv Only",
+            "All BLE Channels",
+            "BLE Adv Priority",
+            "Bluetooth All",
+            "WiFi",
+            "USB",
+            "Video",
+            "RC",
+            "Full Spectrum"
+        };
         
         int selection = getCurrentJammerMode();
         bool redraw = true;
         
         while(true) {
-            if(check(EscPress)) return;
-            
             if(redraw) {
-                tft.fillRect(20, 210, tftWidth - 40, 30, bruceConfig.bgColor);
-                tft.setCursor(20, 210);
-                tft.print(">> " + String(jamModeNames[selection]));
+                tft.fillScreen(bruceConfig.bgColor);
+                drawMainBorderWithTitle("SET JAMMER MODE");
+                tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+                
+                int yPos = 60;
+                for(int i = 0; i < 9; i++) {
+                    if(i == selection) {
+                        tft.setTextColor(TFT_BLACK, TFT_WHITE);
+                        tft.fillRect(20, yPos, tftWidth - 40, 25, TFT_WHITE);
+                    } else {
+                        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+                    }
+                    
+                    tft.setCursor(25, yPos + 7);
+                    tft.print(jamModeNames[i]);
+                    yPos += 28;
+                }
+                
+                tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+                tft.setCursor(20, 280);
+                tft.print("UP/DOWN: Select  SEL: Choose  ESC: Back");
+                
                 redraw = false;
             }
             
@@ -774,12 +792,15 @@ void jamAndConnectMenu() {
                     selection--;
                     redraw = true;
                 }
+                delay(200);
             }
+            
             if(check(NextPress)) {
                 if(selection < 8) {
                     selection++;
                     redraw = true;
                 }
+                delay(200);
             }
             
             if(check(SelPress)) {
@@ -790,15 +811,13 @@ void jamAndConnectMenu() {
                 return;
             }
             
+            if(check(EscPress)) {
+                delay(200);
+                return;
+            }
+            
             delay(50);
         }
-    }});
-    
-    jamOptions.push_back({"[Jammer Status]", [&]() {
-        showAdaptiveMessage("NRF24 Jammer Status", 
-                           ("Mode: " + String(jamModeNames[getCurrentJammerMode()])).c_str(),
-                           "Channel: Hopping",
-                           "OK", TFT_YELLOW);
     }});
     
     jamOptions.push_back({"[Back]", []() {}});
