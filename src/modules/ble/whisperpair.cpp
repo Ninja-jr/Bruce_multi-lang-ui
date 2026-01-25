@@ -405,12 +405,13 @@ String selectTargetFromScan(const char* title) {
     
     std::vector<DeviceInfo> devices;
     for (int i = 0; i < deviceCount; i++) {
-        NimBLEAdvertisedDevice device = foundDevices.getDevice(i);
+        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
+        if (!device) continue;
         
-        String name = device.getName().c_str();
-        String address = device.getAddress().toString().c_str();
-        uint8_t addrType = device.getAddressType();
-        int rssi = device.getRSSI();
+        String name = device->getName().c_str();
+        String address = device->getAddress().toString().c_str();
+        uint8_t addrType = device->getAddressType();
+        int rssi = device->getRSSI();
         
         if (name.isEmpty() || name == "(null)" || name == "null") {
             name = address;
