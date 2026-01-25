@@ -28,7 +28,7 @@ void runAnnoyanceAttackSuite(NimBLEAddress target);
 void simpsonsAttack(NimBLEAddress target);
 void audioAnnoyanceMenu();
 void jamAndConnectMenu();
-void showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, const char* btn3, uint16_t color, bool showEscHint, bool autoProgress);
+int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true, bool autoProgress = false);
 void showErrorMessage(const char* message);
 void showSuccessMessage(const char* message);
 void showWarningMessage(const char* message);
