@@ -18,7 +18,7 @@ extern bool returnToMenu;
 AudioCommandService audioCmd;
 FastPairCrypto crypto;
 
-int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, const char* btn3, uint16_t color, bool showEscHint) {
+int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true) {
     int buttonCount = 0;
     if(strlen(btn1) > 0) buttonCount++;
     if(strlen(btn2) > 0) buttonCount++;
@@ -325,55 +325,6 @@ bool whisperPairFullExploit(NimBLEAddress target) {
     return true;
 }
 
-void testBLEScannerQuick() {
-    Serial.println("\n=== Quick BLE Test ===");
-    
-    NimBLEDevice::deinit(true);
-    delay(500);
-    NimBLEDevice::init("Test");
-    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-    
-    NimBLEScan* scan = NimBLEDevice::getScan();
-    if (!scan) {
-        Serial.println("Scanner init failed");
-        showAdaptiveMessage("Scanner init failed", "OK", "", "", TFT_RED);
-        return;
-    }
-    
-    int found = 0;
-    class QuickCallback : public NimBLEScanCallbacks {
-    public:
-        int& count;
-        QuickCallback(int& c) : count(c) {}
-        
-        void onResult(NimBLEAdvertisedDevice* device) {
-            count++;
-            if (count <= 3) {
-                Serial.printf("  %s (%d dBm)\n", 
-                    device->getName().c_str(), 
-                    device->getRSSI());
-            }
-        }
-    };
-    
-    QuickCallback callback(found);
-    scan->setScanCallbacks(&callback);
-    scan->setActiveScan(true);
-    scan->setInterval(67);
-    scan->setWindow(33);
-    scan->setDuplicateFilter(false);
-    
-    Serial.println("Scanning for 5 seconds...");
-    scan->start(5, false);
-    
-    while (scan->isScanning()) delay(100);
-    
-    scan->clearResults();
-    Serial.printf("Found %d devices\n", found);
-    
-    showAdaptiveMessage("Check Serial Monitor", "OK", "", "", TFT_YELLOW);
-}
-
 String selectTargetFromScan(const char* title) {
     std::vector<Option> deviceOptions;
     String selectedMAC = "";
@@ -387,10 +338,7 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 60);
     tft.print("Initializing BLE...");
     
-    if (!NimBLEDevice::getInitialized()) {
-        NimBLEDevice::init("Bruce-Scanner");
-    }
-    
+    NimBLEDevice::init("");
     NimBLEScan* pBLEScan = NimBLEDevice::getScan();
     
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
@@ -411,7 +359,6 @@ String selectTargetFromScan(const char* title) {
     pBLEScan->setActiveScan(true);
     pBLEScan->setInterval(100);
     pBLEScan->setWindow(99);
-    pBLEScan->setDuplicateFilter(true);
     
     tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -433,7 +380,7 @@ String selectTargetFromScan(const char* title) {
     }
     
     NimBLEScanResults foundDevices = pBLEScan->getResults();
-    int deviceCount = foundDevices.size();
+    int deviceCount = foundDevices.getCount();
     
     tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
     tft.setCursor(20, 60);
@@ -458,13 +405,12 @@ String selectTargetFromScan(const char* title) {
     
     std::vector<DeviceInfo> devices;
     for (int i = 0; i < deviceCount; i++) {
-        NimBLEAdvertisedDevice* devicePtr = foundDevices.getDevice(i);
-        if (!devicePtr) continue;
+        NimBLEAdvertisedDevice device = foundDevices.getDevice(i);
         
-        String name = devicePtr->getName().c_str();
-        String address = devicePtr->getAddress().toString().c_str();
-        uint8_t addrType = devicePtr->getAddressType();
-        int rssi = devicePtr->getRSSI();
+        String name = device.getName().c_str();
+        String address = device.getAddress().toString().c_str();
+        uint8_t addrType = device.getAddressType();
+        int rssi = device.getRSSI();
         
         if (name.isEmpty() || name == "(null)" || name == "null") {
             name = address;
@@ -836,10 +782,6 @@ void jamAndConnectMenu() {
 void whisperPairMenu() {
     std::vector<Option> options;
     returnToMenu = false;
-
-    options.push_back({"[Test Scanner Quick]", []() {
-        testBLEScannerQuick();
-    }});
 
     options.push_back({"[Scan & Test]", []() {
         testFastPairVulnerability();
