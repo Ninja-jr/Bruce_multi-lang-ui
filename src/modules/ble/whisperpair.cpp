@@ -326,204 +326,182 @@ bool whisperPairFullExploit(NimBLEAddress target) {
 }
 
 String selectTargetFromScan(const char* title) {
-    std::vector<Option> deviceOptions;
-    String selectedMAC = "";
-    uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
-    
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle(title);
+    tft.setTextColor(TFT_YELLOW, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("SCANNING...");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setCursor(20, 110);
+    tft.print("Time: 0/15 seconds");
+    tft.setCursor(20, 130);
+    tft.print("Found: 0");
+    tft.setCursor(20, 180);
+    tft.print("ESC: Cancel");
     
-    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("Initializing BLE...");
+    NimBLEDevice::deinit(true);
+    delay(100);
+    NimBLEDevice::init("Bruce-Scanner");
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     
-    NimBLEDevice::init("");
-    NimBLEScan* pBLEScan = NimBLEDevice::getScan();
-    
-    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    
-    if (!pBLEScan) {
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (!pScan) {
+        tft.fillRect(20, 110, 200, 40, bruceConfig.bgColor);
         tft.setTextColor(TFT_RED, bruceConfig.bgColor);
-        tft.print("BLE INIT FAIL");
-        showAdaptiveMessage("Scanner init failed", "OK", "", "", TFT_RED);
+        tft.setCursor(20, 110);
+        tft.print("Scanner init failed!");
+        delay(2000);
         return "";
     }
     
-    tft.setTextColor(TFT_GREEN, bruceConfig.bgColor);
-    tft.print("BLE INIT OK");
-    delay(1000);
+    int foundDevices = 0;
+    unsigned long lastDeviceTime = 0;
     
-    pBLEScan->clearResults();
-    pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(100);
-    pBLEScan->setWindow(99);
-    pBLEScan->setDuplicateFilter(true);
-    
-    tft.fillRect(20, 60, tftWidth - 40, 80, bruceConfig.bgColor);
-    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("Scanning for 20s...");
-    tft.setCursor(20, 80);
-    tft.print("Found: 0 devices");
-    tft.setCursor(20, 100);
-    tft.print("Press ESC to cancel");
-    
-    int foundDuringScan = 0;
-    class ScanCallback : public NimBLEScanCallbacks {
-    public:
+    class ScanCallbacks : public NimBLEScanCallbacks {
+    private:
         int& count;
-        ScanCallback(int& c) : count(c) {}
+        unsigned long& lastTime;
         
-        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+    public:
+        ScanCallbacks(int& c, unsigned long& t) : count(c), lastTime(t) {}
+        
+        void onResult(NimBLEAdvertisedDevice* device) {
             count++;
+            lastTime = millis();
         }
     };
     
-    ScanCallback scanCallback(foundDuringScan);
-    pBLEScan->setScanCallbacks(&scanCallback);
+    ScanCallbacks scanCallbacks(foundDevices, lastDeviceTime);
+    pScan->setScanCallbacks(&scanCallbacks, false);
+    pScan->setActiveScan(true);
+    pScan->setInterval(67);
+    pScan->setWindow(33);
+    pScan->setDuplicateFilter(false);
+    pScan->setMaxResults(0);
     
     unsigned long scanStart = millis();
-    pBLEScan->start(20, false);
+    pScan->start(0, true);
     
-    unsigned long lastUpdate = millis();
+    unsigned long lastTimeUpdate = 0;
+    int lastDisplayedCount = 0;
     
-    while (pBLEScan->isScanning()) {
+    while (millis() - scanStart < 15000) {
         unsigned long now = millis();
         int elapsed = (now - scanStart) / 1000;
         
-        if (now - lastUpdate >= 1000) {
-            lastUpdate = now;
-            tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
-            tft.setCursor(20, 80);
-            tft.printf("Found: %d devices", foundDuringScan);
+        if (now - lastTimeUpdate >= 1000) {
+            lastTimeUpdate = now;
+            tft.fillRect(80, 110, 30, 15, bruceConfig.bgColor);
+            tft.setCursor(80, 110);
+            tft.print(elapsed);
+        }
+        
+        if (foundDevices != lastDisplayedCount) {
+            lastDisplayedCount = foundDevices;
+            tft.fillRect(80, 130, 30, 15, bruceConfig.bgColor);
+            tft.setCursor(80, 130);
+            tft.print(foundDevices);
         }
         
         if (check(EscPress)) {
-            pBLEScan->stop();
+            pScan->stop();
+            delay(50);
             return "";
         }
         
-        delay(50);
+        delay(10);
     }
     
-    NimBLEScanResults foundDevices = pBLEScan->getResults();
-    int deviceCount = foundDevices.getCount();
+    pScan->stop();
+    NimBLEScanResults results = pScan->getResults();
     
-    tft.fillRect(20, 60, tftWidth - 40, 80, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
+    std::vector<const NimBLEAdvertisedDevice*> devicesList;
+    for(int i = 0; i < results.getCount(); i++) {
+        const NimBLEAdvertisedDevice* device = results.getDevice(i);
+        if(device) devicesList.push_back(device);
+    }
+    
+    int storedCount = devicesList.size();
+    pScan->clearResults();
+    
+    tft.fillRect(20, 110, 200, 40, bruceConfig.bgColor);
+    tft.setCursor(20, 110);
     tft.print("Scan complete!");
-    tft.setCursor(20, 80);
-    tft.printf("Found: %d device(s)", deviceCount);
+    tft.setCursor(20, 130);
+    tft.printf("Found: %d devices", storedCount);
     
-    delay(1500);
-    
-    if (deviceCount == 0) {
-        showAdaptiveMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
-        delay(1500);
-        pBLEScan->clearResults();
+    if (storedCount == 0) {
+        tft.setCursor(20, 160);
+        tft.print("No devices found");
+        tft.setCursor(20, 180);
+        tft.print("See Serial Monitor");
+        tft.setCursor(20, 210);
+        tft.print("Press any key...");
+        
+        while (!check(EscPress) && !check(SelPress)) delay(50);
         return "";
     }
     
-    struct DeviceInfo {
+    tft.fillRect(20, 160, 200, 40, bruceConfig.bgColor);
+    tft.setCursor(20, 160);
+    tft.print("Processing...");
+    
+    std::vector<Option> deviceOptions;
+    String selectedMAC = "";
+    uint8_t selectedAddrType = 0;
+    
+    struct SimpleDevice {
         String name;
         String address;
-        uint8_t addrType;
+        uint8_t type;
         int rssi;
     };
+    std::vector<SimpleDevice> devices;
     
-    std::vector<DeviceInfo> devices;
-    for (int i = 0; i < deviceCount; i++) {
-        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
+    for (int i = 0; i < min(storedCount, 30); i++) {
+        const NimBLEAdvertisedDevice* device = devicesList[i];
         if (!device) continue;
         
-        String name = device->getName().c_str();
-        String address = device->getAddress().toString().c_str();
-        uint8_t addrType = device->getAddressType();
-        int rssi = device->getRSSI();
+        SimpleDevice dev;
+        dev.name = device->getName().c_str();
+        dev.address = device->getAddress().toString().c_str();
+        dev.type = device->getAddressType();
+        dev.rssi = device->getRSSI();
         
-        if (name.isEmpty() || name == "(null)" || name == "null") {
-            name = address;
+        if (dev.name.isEmpty() || dev.name == "null") {
+            dev.name = dev.address;
         }
         
-        devices.push_back({name, address, addrType, rssi});
+        devices.push_back(dev);
     }
     
-    std::sort(devices.begin(), devices.end(), [](const DeviceInfo& a, const DeviceInfo& b) {
-        return a.rssi > b.rssi;
-    });
+    std::sort(devices.begin(), devices.end(), 
+              [](const SimpleDevice& a, const SimpleDevice& b) {
+                  return a.rssi > b.rssi;
+              });
     
-    for (const auto& dev : devices) {
+    for (size_t i = 0; i < devices.size(); i++) {
+        const auto& dev = devices[i];
+        
         String displayText = dev.name;
-        
-        if (dev.name == dev.address) {
-            if (dev.address.length() > 8) {
-                displayText = dev.address.substring(0, 8) + "...";
-            }
-        } else if (displayText.length() > 15) {
-            displayText = displayText.substring(0, 12) + "...";
+        if (displayText.length() > 18) {
+            displayText = displayText.substring(0, 15) + "...";
         }
-        
         displayText += " (" + String(dev.rssi) + "dB)";
         
-        deviceOptions.push_back({displayText.c_str(), [=, &selectedMAC, &selectedAddrType]() {
-            tft.fillScreen(bruceConfig.bgColor);
-            drawMainBorderWithTitle("DEVICE INFO");
-            tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-            
-            tft.fillRect(20, 50, tftWidth - 40, 150, bruceConfig.bgColor);
-            
-            tft.setCursor(20, 60);
-            if (dev.name == dev.address) {
-                tft.print("MAC: " + dev.address);
-                tft.setCursor(20, 90);
-                tft.print("RSSI: " + String(dev.rssi) + " dBm");
-                tft.setCursor(20, 120);
-            } else {
-                tft.print("Name: " + dev.name);
-                tft.setCursor(20, 90);
-                tft.print("MAC: " + dev.address);
-                tft.setCursor(20, 120);
-                tft.print("RSSI: " + String(dev.rssi) + " dBm");
-                tft.setCursor(20, 150);
-            }
-            
-            tft.print("Type: ");
-            if (dev.addrType == BLE_ADDR_PUBLIC) {
-                tft.print("Public");
-            } else if (dev.addrType == BLE_ADDR_RANDOM) {
-                tft.print("Random");
-            } else {
-                tft.print("Unknown");
-            }
-            
-            tft.setCursor(20, 190);
-            tft.print("SEL: Connect to device");
-            tft.setCursor(20, 210);
-            tft.print("ESC: Back to device list");
-            
-            while (true) {
-                if (check(EscPress)) {
-                    break;
-                }
-                if (check(SelPress)) {
-                    selectedMAC = dev.address;
-                    selectedAddrType = dev.addrType;
-                    break;
-                }
-                delay(50);
-            }
+        String mac = dev.address;
+        uint8_t type = dev.type;
+        
+        deviceOptions.push_back({displayText.c_str(), [&selectedMAC, &selectedAddrType, mac, type]() {
+            selectedMAC = mac;
+            selectedAddrType = type;
         }});
     }
     
     deviceOptions.push_back({"[Back]", []() {}});
     
-    if (deviceOptions.size() > 1) {
-        loopOptions(deviceOptions, MENU_TYPE_SUBMENU, "SELECT DEVICE", 0, false);
-    }
-    
-    pBLEScan->clearResults();
+    tft.fillScreen(bruceConfig.bgColor);
+    loopOptions(deviceOptions, MENU_TYPE_SUBMENU, "SELECT DEVICE", 0, false);
     
     if (!selectedMAC.isEmpty()) {
         return selectedMAC + ":" + String(selectedAddrType);
