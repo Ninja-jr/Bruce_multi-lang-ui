@@ -334,9 +334,13 @@ String selectTargetFromScan(const char* title) {
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     
-    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
+    tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Scanning for 20s...");
+    tft.print("Scanning for 20 seconds...");
+    tft.setCursor(20, 80);
+    tft.print("Devices will show after scan");
+    tft.setCursor(20, 100);
+    tft.print("ESC: Cancel scan");
     
     BLEDevice::init("");
     BLEScan* pBLEScan = BLEDevice::getScan();
@@ -356,29 +360,15 @@ String selectTargetFromScan(const char* title) {
     uint32_t scanDuration = 20000;
     bool scanCancelled = false;
     
-    tft.setCursor(20, 80);
-    tft.print("ESC: Cancel scan");
+    bool scanStarted = pBLEScan->start(scanDuration / 1000, false);
     
-    pBLEScan->start(scanDuration / 1000, false);
-    
-    uint32_t lastUpdate = millis();
     while (millis() - scanStartTime < scanDuration && !scanCancelled) {
-        uint32_t remaining = (scanStartTime + scanDuration - millis()) / 1000;
-        
-        if (millis() - lastUpdate > 1000) {
-            tft.fillRect(20, 60, 200, 20, bruceConfig.bgColor);
-            tft.setCursor(20, 60);
-            tft.print("Scanning: " + String(remaining) + "s");
-            lastUpdate = millis();
-        }
-        
         if (check(EscPress)) {
             scanCancelled = true;
             pBLEScan->stop();
             break;
         }
-        
-        delay(100);
+        delay(50);
     }
     
     if (!scanCancelled) {
@@ -396,12 +386,12 @@ String selectTargetFromScan(const char* title) {
     
     int deviceCount = foundDevices.getCount();
     
-    tft.fillRect(20, 60, 200, 40, bruceConfig.bgColor);
+    tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Scan complete!");
     tft.setCursor(20, 80);
-    tft.print("Found: " + String(deviceCount));
-    delay(1000);
+    tft.print("Found: " + String(deviceCount) + " device(s)");
+    delay(1500);
     
     if (deviceCount == 0) {
         showAdaptiveMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
