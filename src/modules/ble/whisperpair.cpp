@@ -339,29 +339,24 @@ bool checkIfFastPairDevice(NimBLEAddress target) {
     debugLines.push_back("Connected successfully");
     debugLines.push_back("Discovering services...");
 
-    const std::vector<NimBLERemoteService*>* services = pClient->getServices(true);
+    const std::vector<NimBLERemoteService*>& services = pClient->getServices(true);
     
     bool hasFastPair = false;
-    int serviceCount = 0;
+    int serviceCount = services.size();
     
-    if(services) {
-        serviceCount = services->size();
-        debugLines.push_back("Found " + String(serviceCount) + " services:");
+    debugLines.push_back("Found " + String(serviceCount) + " services:");
+    
+    for(int i = 0; i < min(6, serviceCount); i++) {
+        String uuid = services[i]->getUUID().toString().c_str();
+        debugLines.push_back("[" + String(i+1) + "] " + uuid);
         
-        for(int i = 0; i < min(6, (int)services->size()); i++) {
-            String uuid = (*services)[i]->getUUID().toString().c_str();
-            debugLines.push_back("[" + String(i+1) + "] " + uuid);
-            
-            if(uuid.indexOf("fe2c") != -1 || uuid.indexOf("FE2C") != -1) {
-                hasFastPair = true;
-            }
+        if(uuid.indexOf("fe2c") != -1 || uuid.indexOf("FE2C") != -1) {
+            hasFastPair = true;
         }
-        
-        if(services->size() > 6) {
-            debugLines.push_back("... and " + String(services->size() - 6) + " more");
-        }
-    } else {
-        debugLines.push_back("No services found!");
+    }
+    
+    if(serviceCount > 6) {
+        debugLines.push_back("... and " + String(serviceCount - 6) + " more");
     }
     
     pClient->disconnect();
@@ -414,11 +409,11 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
         debugLines.push_back("FastPair service not found!");
         debugLines.push_back("(UUID FE2C not available)");
         
-        const std::vector<NimBLERemoteService*>* services = pClient->getServices(false);
-        if(services && services->size() > 0) {
+        const std::vector<NimBLERemoteService*>& services = pClient->getServices(false);
+        if(services.size() > 0) {
             debugLines.push_back("Available services:");
-            for(int i = 0; i < min(4, (int)services->size()); i++) {
-                String uuid = (*services)[i]->getUUID().toString().c_str();
+            for(int i = 0; i < min(4, (int)services.size()); i++) {
+                String uuid = services[i]->getUUID().toString().c_str();
                 debugLines.push_back(uuid);
             }
         }
