@@ -17,17 +17,4 @@ public:
     bool isDeviceConnected();
 };
 
-class AudioToneGenerator {
-private:
-    int buzzerPin;
-    
-public:
-    AudioToneGenerator(int pin = 25);
-    void playTone(int freq, int duration);
-    void playSimpsonsTheme();
-    void playAlertTone();
-    void playSuccessTone();
-    void playErrorTone();
-};
-
 void audioCommandHijackTest();
