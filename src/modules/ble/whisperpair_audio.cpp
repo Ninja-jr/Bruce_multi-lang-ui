@@ -2,17 +2,22 @@
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include <globals.h>
-#include "driver/ledc.h"
 
 AudioCommandService::AudioCommandService() : pServer(nullptr), pAudioService(nullptr), pCmdCharacteristic(nullptr), isConnected(false) {}
 
 void AudioCommandService::start() {
     NimBLEDevice::init("Audio-Injector");
     pServer = NimBLEDevice::createServer();
-    pServer->setCallbacks(new class: public NimBLEServerCallbacks {
-        void onConnect(NimBLEServer* pServer) { isConnected = true; }
-        void onDisconnect(NimBLEServer* pServer) { isConnected = false; }
-    });
+    
+    class ServerCallbacks : public NimBLEServerCallbacks {
+        AudioCommandService* parent;
+    public:
+        ServerCallbacks(AudioCommandService* p) : parent(p) {}
+        void onConnect(NimBLEServer* pServer) { parent->isConnected = true; }
+        void onDisconnect(NimBLEServer* pServer) { parent->isConnected = false; }
+    };
+    
+    pServer->setCallbacks(new ServerCallbacks(this));
     
     pAudioService = pServer->createService("AUDIO1234-5678-9012-3456-789012345678");
     pCmdCharacteristic = pAudioService->createCharacteristic(
@@ -42,57 +47,6 @@ bool AudioCommandService::isDeviceConnected() {
     return isConnected;
 }
 
-AudioToneGenerator::AudioToneGenerator(int pin) : buzzerPin(pin) {
-    pinMode(buzzerPin, OUTPUT);
-    ledcSetup(0, 2000, 8);
-    ledcAttachPin(buzzerPin, 0);
-}
-
-void AudioToneGenerator::playTone(int freq, int duration) {
-    ledcWriteTone(0, freq);
-    delay(duration);
-    ledcWrite(0, 0);
-}
-
-void AudioToneGenerator::playSimpsonsTheme() {
-    int melody[] = {
-        392, 330, 294, 262, 294, 330, 392, 392, 392,
-        440, 392, 349, 330, 349, 392, 440, 440,
-        494, 440, 392, 349, 392, 440, 494, 494,
-        523, 494, 440, 392, 440, 494, 523, 523
-    };
-    
-    int durations[] = {
-        300, 300, 300, 300, 300, 300, 600, 300, 300,
-        300, 300, 300, 300, 300, 600, 300, 300,
-        300, 300, 300, 300, 300, 600, 300, 300,
-        300, 300, 300, 300, 300, 600, 600, 600
-    };
-    
-    for(int i = 0; i < 32; i++) {
-        playTone(melody[i], durations[i]);
-        delay(50);
-    }
-}
-
-void AudioToneGenerator::playAlertTone() {
-    playTone(1000, 200);
-    delay(100);
-    playTone(1500, 200);
-    delay(100);
-    playTone(1000, 200);
-}
-
-void AudioToneGenerator::playSuccessTone() {
-    playTone(2000, 100);
-    delay(50);
-    playTone(2500, 100);
-}
-
-void AudioToneGenerator::playErrorTone() {
-    playTone(300, 500);
-}
-
 void audioCommandHijackTest() {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("AUDIO HIJACK");
@@ -105,14 +59,16 @@ void audioCommandHijackTest() {
     tft.print("3. Inject audio commands");
     tft.setCursor(20, 160);
     tft.print("SEL: Start  ESC: Back");
+    
     while(true) {
-        if(check(EscPress)) return;
-        if(check(SelPress)) break;
+        if(check(0) || check(1)) return;
         delay(50);
     }
+    
     showAdaptiveMessage("Starting audio service...", "", "", "", TFT_WHITE, false, true);
     AudioCommandService audioCmd;
     audioCmd.start();
+    
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("AUDIO INJECTION");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -128,25 +84,30 @@ void audioCommandHijackTest() {
     } else {
         tft.print("NO");
     }
+    
     tft.setCursor(20, 160);
     tft.print("SEL: Inject  ESC: Stop");
+    
     unsigned long startTime = millis();
     while(millis() - startTime < 30000) {
-        if(check(EscPress)) {
+        if(check(0)) {
             audioCmd.stop();
             showAdaptiveMessage("Service stopped", "OK", "", "", TFT_WHITE);
             return;
         }
-        if(check(SelPress)) {
+        
+        if(check(1)) {
             if(audioCmd.isDeviceConnected()) {
                 uint8_t volume_up[] = {0x01, 0x00, 0x00, 0x00};
                 audioCmd.injectCommand(volume_up, 4);
                 showAdaptiveMessage("Volume up sent!", "", "", "", TFT_GREEN, false, true);
                 delay(500);
+                
                 uint8_t play_pause[] = {0x02, 0x00, 0x00, 0x00};
                 audioCmd.injectCommand(play_pause, 4);
                 showAdaptiveMessage("Play/Pause sent!", "", "", "", TFT_GREEN, false, true);
                 delay(500);
+                
                 uint8_t next_track[] = {0x03, 0x00, 0x00, 0x00};
                 audioCmd.injectCommand(next_track, 4);
                 showAdaptiveMessage("Next track sent!", "", "", "", TFT_GREEN, false, true);
@@ -158,6 +119,7 @@ void audioCommandHijackTest() {
         }
         delay(100);
     }
+    
     audioCmd.stop();
     showAdaptiveMessage("Timeout - service stopped", "OK", "", "", TFT_WHITE);
 }
