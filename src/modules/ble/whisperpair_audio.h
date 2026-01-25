@@ -1,27 +1,33 @@
 #pragma once
-#include <NimBLEDevice.h>
 #include <Arduino.h>
+#include <NimBLEDevice.h>
 
 class AudioCommandService {
 private:
     NimBLEServer* pServer;
-    NimBLEService* pService;
-    NimBLECharacteristic* pAudioCmdChar;
-    NimBLECharacteristic* pAudioDataChar;
-    bool isRunning = false;
-
-    class AudioCmdCallbacks : public NimBLECharacteristicCallbacks {
-        void onWrite(NimBLECharacteristic* pCharacteristic);
-    };
+    NimBLEService* pAudioService;
+    NimBLECharacteristic* pCmdCharacteristic;
+    bool isConnected;
 
 public:
-    void begin();
-    void sendAudioCommand(const char* cmd);
-    void sendAudioTone(uint8_t frequency, uint16_t duration_ms);
+    AudioCommandService();
+    void start();
     void stop();
-    bool isActive() { return isRunning; }
+    void injectCommand(const uint8_t* cmd, size_t len);
+    bool isDeviceConnected();
 };
 
-extern AudioCommandService audioCmd;
-bool attemptAudioCommandHijack(NimBLEAddress target);
+class AudioToneGenerator {
+private:
+    int buzzerPin;
+    
+public:
+    AudioToneGenerator(int pin = 25);
+    void playTone(int freq, int duration);
+    void playSimpsonsTheme();
+    void playAlertTone();
+    void playSuccessTone();
+    void playErrorTone();
+};
+
 void audioCommandHijackTest();
