@@ -307,7 +307,7 @@ bool requireSimpleConfirmation(const char* message) {
     } else {
         tft.print(message);
     }
-    
+
     while(true) {
         if(check(EscPress)) {
             showAdaptiveMessage("Cancelled", "OK", "", "", TFT_WHITE);
@@ -339,7 +339,7 @@ bool checkIfFastPairDevice(NimBLEAddress target) {
     debugLines.push_back("Connected successfully");
     debugLines.push_back("Discovering services...");
 
-    std::vector<NimBLERemoteService*>* services = pClient->getServices(true);
+    const std::vector<NimBLERemoteService*>* services = pClient->getServices(true);
     
     bool hasFastPair = false;
     int serviceCount = 0;
@@ -349,7 +349,7 @@ bool checkIfFastPairDevice(NimBLEAddress target) {
         debugLines.push_back("Found " + String(serviceCount) + " services:");
         
         for(int i = 0; i < min(6, (int)services->size()); i++) {
-            String uuid = services->at(i)->getUUID().toString().c_str();
+            String uuid = (*services)[i]->getUUID().toString().c_str();
             debugLines.push_back("[" + String(i+1) + "] " + uuid);
             
             if(uuid.indexOf("fe2c") != -1 || uuid.indexOf("FE2C") != -1) {
@@ -414,7 +414,7 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
         debugLines.push_back("FastPair service not found!");
         debugLines.push_back("(UUID FE2C not available)");
         
-        std::vector<NimBLERemoteService*>* services = pClient->getServices(false);
+        const std::vector<NimBLERemoteService*>* services = pClient->getServices(false);
         if(services && services->size() > 0) {
             debugLines.push_back("Available services:");
             for(int i = 0; i < min(4, (int)services->size()); i++) {
