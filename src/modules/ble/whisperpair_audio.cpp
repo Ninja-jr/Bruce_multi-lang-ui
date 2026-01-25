@@ -1,152 +1,163 @@
 #include "whisperpair_audio.h"
-#include "whisperpair.h"
-#include <globals.h>
 #include "core/display.h"
+#include "core/mykeyboard.h"
+#include <globals.h>
+#include "driver/ledc.h"
 
-// Forward declarations for functions in whisperpair.cpp
-extern int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true, bool autoProgress = false);
-extern void showWarningMessage(const char* message);
-extern void showErrorMessage(const char* message);
-extern void showSuccessMessage(const char* message);
-extern bool requireSimpleConfirmation(const char* message);
-extern bool initBLEIfNeeded(const char* deviceName);
-extern String selectTargetFromScan(const char* title);
+AudioCommandService::AudioCommandService() : pServer(nullptr), pAudioService(nullptr), pCmdCharacteristic(nullptr), isConnected(false) {}
 
-void AudioCommandService::AudioCmdCallbacks::onWrite(NimBLECharacteristic* pCharacteristic) {
-    std::string value = pCharacteristic->getValue();
-    if(value.length() > 0) {
-        Serial.printf("[AudioCMD] Received: %s\n", value.c_str());
-    }
-}
-
-void AudioCommandService::begin() {
-    if(isRunning) return;
-
-    initBLEIfNeeded("audio_cmd");
-
+void AudioCommandService::start() {
+    NimBLEDevice::init("Audio-Injector");
     pServer = NimBLEDevice::createServer();
-    pService = pServer->createService("19B10000-E8F2-537E-4F6C-D104768A1214");
-    pAudioCmdChar = pService->createCharacteristic(
-        "19B10001-E8F2-537E-4F6C-D104768A1214",
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
+    pServer->setCallbacks(new class: public NimBLEServerCallbacks {
+        void onConnect(NimBLEServer* pServer) { isConnected = true; }
+        void onDisconnect(NimBLEServer* pServer) { isConnected = false; }
+    });
+    
+    pAudioService = pServer->createService("AUDIO1234-5678-9012-3456-789012345678");
+    pCmdCharacteristic = pAudioService->createCharacteristic(
+        "CMD1234-5678-9012-3456-789012345678",
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
-    pAudioCmdChar->setCallbacks(new AudioCmdCallbacks());
-    pAudioDataChar = pService->createCharacteristic(
-        "19B10002-E8F2-537E-4F6C-D104768A1214",
-        NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::NOTIFY
-    );
-    pService->start();
+    
+    pAudioService->start();
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(pService->getUUID());
+    pAdvertising->addServiceUUID(pAudioService->getUUID());
     pAdvertising->start();
-    isRunning = true;
-}
-
-void AudioCommandService::sendAudioCommand(const char* cmd) {
-    if(pAudioCmdChar && isRunning) {
-        pAudioCmdChar->setValue((uint8_t*)cmd, strlen(cmd));
-        pAudioCmdChar->notify();
-    }
-}
-
-void AudioCommandService::sendAudioTone(uint8_t frequency, uint16_t duration_ms) {
-    uint8_t toneCmd[7] = {
-        'T', 'O', 'N', 'E',
-        (uint8_t)(frequency >> 8),
-        (uint8_t)(frequency & 0xFF),
-        (uint8_t)(duration_ms / 100)
-    };
-    sendAudioCommand((char*)toneCmd);
 }
 
 void AudioCommandService::stop() {
-    if(isRunning) {
+    if(pServer) {
         NimBLEDevice::deinit(true);
-        isRunning = false;
     }
 }
 
-bool attemptAudioCommandHijack(NimBLEAddress target) {
-    tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle("AUDIO HIJACK");
-    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("Connecting...");
-
-    initBLEIfNeeded("Bruce-WP");
-
-    NimBLEClient* pClient = NimBLEDevice::createClient();
-    if(!pClient->connect(target)) {
-        showErrorMessage("Failed to connect");
-        NimBLEDevice::deleteClient(pClient);
-        return false;
+void AudioCommandService::injectCommand(const uint8_t* cmd, size_t len) {
+    if(pCmdCharacteristic && isConnected) {
+        pCmdCharacteristic->setValue(cmd, len);
     }
-    
-    tft.fillRect(20, 80, tftWidth - 40, 60, bruceConfig.bgColor);
-    tft.setCursor(20, 80);
-    tft.print("Connected!");
-    tft.setCursor(20, 100);
-    tft.print("Discovering services...");
+}
 
-    NimBLERemoteService* pService = pClient->getService(NimBLEUUID("19B10000-E8F2-537E-4F6C-D104768A1214"));
-    if(!pService) pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
-    if(!pService) {
-        showErrorMessage("No audio service found");
-        pClient->disconnect();
-        NimBLEDevice::deleteClient(pClient);
-        return false;
-    }
-    
-    tft.fillRect(20, 120, tftWidth - 40, 60, bruceConfig.bgColor);
-    tft.setCursor(20, 120);
-    tft.print("Audio service found!");
-    tft.setCursor(20, 140);
-    tft.print("Sending test tones...");
+bool AudioCommandService::isDeviceConnected() {
+    return isConnected;
+}
 
-    uint16_t tones[] = {440, 550, 660, 770};
-    for(int i = 0; i < 4; i++) {
-        uint8_t toneCmd[7] = {
-            'T', 'O', 'N', 'E',
-            (uint8_t)(tones[i] >> 8),
-            (uint8_t)(tones[i] & 0xFF),
-            100
-        };
-        NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID("19B10001-E8F2-537E-4F6C-D104768A1214"));
-        if(pChar) pChar->writeValue(toneCmd, sizeof(toneCmd), false);
-        delay(200);
-    }
+AudioToneGenerator::AudioToneGenerator(int pin) : buzzerPin(pin) {
+    pinMode(buzzerPin, OUTPUT);
+    ledcSetup(0, 2000, 8);
+    ledcAttachPin(buzzerPin, 0);
+}
+
+void AudioToneGenerator::playTone(int freq, int duration) {
+    ledcWriteTone(0, freq);
+    delay(duration);
+    ledcWrite(0, 0);
+}
+
+void AudioToneGenerator::playSimpsonsTheme() {
+    int melody[] = {
+        392, 330, 294, 262, 294, 330, 392, 392, 392,
+        440, 392, 349, 330, 349, 392, 440, 440,
+        494, 440, 392, 349, 392, 440, 494, 494,
+        523, 494, 440, 392, 440, 494, 523, 523
+    };
     
-    pClient->disconnect();
-    NimBLEDevice::deleteClient(pClient);
-    return true;
+    int durations[] = {
+        300, 300, 300, 300, 300, 300, 600, 300, 300,
+        300, 300, 300, 300, 300, 600, 300, 300,
+        300, 300, 300, 300, 300, 600, 300, 300,
+        300, 300, 300, 300, 300, 600, 600, 600
+    };
+    
+    for(int i = 0; i < 32; i++) {
+        playTone(melody[i], durations[i]);
+        delay(50);
+    }
+}
+
+void AudioToneGenerator::playAlertTone() {
+    playTone(1000, 200);
+    delay(100);
+    playTone(1500, 200);
+    delay(100);
+    playTone(1000, 200);
+}
+
+void AudioToneGenerator::playSuccessTone() {
+    playTone(2000, 100);
+    delay(50);
+    playTone(2500, 100);
+}
+
+void AudioToneGenerator::playErrorTone() {
+    playTone(300, 500);
 }
 
 void audioCommandHijackTest() {
     tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle("AUDIO CMD HIJACK");
+    drawMainBorderWithTitle("AUDIO HIJACK");
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-
-    String selectedInfo = selectTargetFromScan("SELECT TARGET");
-    if(selectedInfo.isEmpty()) return;
-
-    int colonPos = selectedInfo.lastIndexOf(':');
-    if(colonPos == -1) {
-        showErrorMessage("Invalid device info");
-        return;
+    tft.setCursor(20, 60);
+    tft.print("1. Start audio service");
+    tft.setCursor(20, 90);
+    tft.print("2. Connect target device");
+    tft.setCursor(20, 120);
+    tft.print("3. Inject audio commands");
+    tft.setCursor(20, 160);
+    tft.print("SEL: Start  ESC: Back");
+    while(true) {
+        if(check(EscPress)) return;
+        if(check(SelPress)) break;
+        delay(50);
     }
-
-    String selectedMAC = selectedInfo.substring(0, colonPos);
-    uint8_t addrType = selectedInfo.substring(colonPos + 1).toInt();
-
-    NimBLEAddress target(selectedMAC.c_str(), addrType);
-
-    if(!requireSimpleConfirmation("Start audio CMD hijack?")) return;
-
-    bool success = attemptAudioCommandHijack(target);
-
-    if(success) {
-        showSuccessMessage("SUCCESS! Audio commands sent");
+    showAdaptiveMessage("Starting audio service...", "", "", "", TFT_WHITE, false, true);
+    AudioCommandService audioCmd;
+    audioCmd.start();
+    tft.fillScreen(bruceConfig.bgColor);
+    drawMainBorderWithTitle("AUDIO INJECTION");
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("Service: RUNNING");
+    tft.setCursor(20, 90);
+    tft.print("Waiting for connection...");
+    tft.setCursor(20, 120);
+    tft.print("Connected: ");
+    tft.setCursor(120, 120);
+    if(audioCmd.isDeviceConnected()) {
+        tft.print("YES");
     } else {
-        showErrorMessage("FAILED - No audio service");
+        tft.print("NO");
     }
+    tft.setCursor(20, 160);
+    tft.print("SEL: Inject  ESC: Stop");
+    unsigned long startTime = millis();
+    while(millis() - startTime < 30000) {
+        if(check(EscPress)) {
+            audioCmd.stop();
+            showAdaptiveMessage("Service stopped", "OK", "", "", TFT_WHITE);
+            return;
+        }
+        if(check(SelPress)) {
+            if(audioCmd.isDeviceConnected()) {
+                uint8_t volume_up[] = {0x01, 0x00, 0x00, 0x00};
+                audioCmd.injectCommand(volume_up, 4);
+                showAdaptiveMessage("Volume up sent!", "", "", "", TFT_GREEN, false, true);
+                delay(500);
+                uint8_t play_pause[] = {0x02, 0x00, 0x00, 0x00};
+                audioCmd.injectCommand(play_pause, 4);
+                showAdaptiveMessage("Play/Pause sent!", "", "", "", TFT_GREEN, false, true);
+                delay(500);
+                uint8_t next_track[] = {0x03, 0x00, 0x00, 0x00};
+                audioCmd.injectCommand(next_track, 4);
+                showAdaptiveMessage("Next track sent!", "", "", "", TFT_GREEN, false, true);
+                delay(500);
+            } else {
+                showErrorMessage("No device connected!");
+                delay(1000);
+            }
+        }
+        delay(100);
+    }
+    audioCmd.stop();
+    showAdaptiveMessage("Timeout - service stopped", "OK", "", "", TFT_WHITE);
 }
