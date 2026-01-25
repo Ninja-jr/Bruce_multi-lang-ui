@@ -351,10 +351,8 @@ String selectTargetFromScan(const char* title) {
     
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(80);
-    pBLEScan->setWindow(60);
-    pBLEScan->setMaxResults(0);
-    pBLEScan->setDuplicateFilter(false);
+    pBLEScan->setInterval(100);
+    pBLEScan->setWindow(99);
     
     uint32_t scanStartTime = millis();
     uint32_t scanDuration = 20000;
