@@ -1,141 +1,102 @@
 #include "fastpair_crypto.h"
-#include <mbedtls/md.h>
-#include <mbedtls/hkdf.h>
-#include <mbedtls/ccm.h>
-#include <esp_timer.h>
-#include <Arduino.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/ecdh.h>
+#include "esp_random.h"
 
 FastPairCrypto::FastPairCrypto() {
-    mbedtls_ecdh_init(&ecdh_ctx);
-    mbedtls_ccm_init(&ccm_ctx);
+    mbedtls_ecp_group_init(&grp);
+    mbedtls_mpi_init(&d);
+    mbedtls_ecp_point_init(&Q);
     mbedtls_ctr_drbg_init(&ctr_drbg);
+    
+    mbedtls_entropy_context entropy;
     mbedtls_entropy_init(&entropy);
     
-    const char* pers = "fastpair_exploit";
     mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, 
-                         (const uint8_t*)pers, strlen(pers));
+                         (const uint8_t*)"fastpair", 8);
     
-    memset(shared_secret, 0, 32);
-    memset(account_key, 0, 16);
+    mbedtls_entropy_free(&entropy);
+    mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1);
 }
 
 FastPairCrypto::~FastPairCrypto() {
-    mbedtls_ecdh_free(&ecdh_ctx);
-    mbedtls_ccm_free(&ccm_ctx);
+    mbedtls_ecp_group_free(&grp);
+    mbedtls_mpi_free(&d);
+    mbedtls_ecp_point_free(&Q);
     mbedtls_ctr_drbg_free(&ctr_drbg);
-    mbedtls_entropy_free(&entropy);
 }
 
-bool FastPairCrypto::generateKeyPair(uint8_t* public_key, size_t* pub_len) {
-    int ret = mbedtls_ecdh_gen_public(&ecdh_ctx, MBEDTLS_ECP_DP_SECP256R1,
-                                      mbedtls_ctr_drbg_random, &ctr_drbg,
-                                      public_key, *pub_len, pub_len);
-    return ret == 0;
-}
-
-bool FastPairCrypto::computeSharedSecret(const uint8_t* peer_public, size_t peer_len) {
-    int ret = mbedtls_ecdh_compute_shared(&ecdh_ctx, MBEDTLS_ECP_DP_SECP256R1,
-                                          shared_secret, 32,
-                                          peer_public, peer_len,
-                                          mbedtls_ctr_drbg_random, &ctr_drbg);
-    return ret == 0;
-}
-
-bool FastPairCrypto::deriveFastPairKeys(const uint8_t* nonce, size_t nonce_len) {
-    if(nonce_len != 16) return false;
-    
-    // FastPair HKDF-SHA256
-    const uint8_t salt[] = "Fast Pairing";  // 11 bytes
-    const size_t salt_len = 11;
-    
-    // Info = Nonce || "account_key" || 0x00 || 0x10 0x00 0x00 0x00
-    uint8_t info[32];
-    memcpy(info, nonce, 16);
-    memcpy(info + 16, "account_key", 11);
-    info[27] = 0x00;
-    info[28] = 0x10;  // Output length = 16 bytes
-    info[29] = 0x00;
-    info[30] = 0x00;
-    info[31] = 0x00;
-    
-    const mbedtls_md_info_t* md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-    
-    int ret = mbedtls_hkdf(md_info, 
-                          salt, salt_len,
-                          shared_secret, 32,
-                          info, 32,
-                          account_key, 16);
-    
+bool FastPairCrypto::generateValidKeyPair(uint8_t* public_key, size_t* pub_len) {
+    int ret = mbedtls_ecdh_gen_public(&grp, &d, &Q, 
+                                      mbedtls_ctr_drbg_random, &ctr_drbg);
     if(ret != 0) {
-        Serial.println("[Crypto] HKDF failed, using fallback");
-        memcpy(account_key, shared_secret, 16);
+        Serial.printf("[Crypto] Key gen failed: -0x%04X\n", -ret);
+        return false;
     }
     
-    return true;
+    if(*pub_len >= 65) {
+        size_t olen;
+        ret = mbedtls_ecp_point_write_binary(&grp, &Q, 
+                                            MBEDTLS_ECP_PF_UNCOMPRESSED,
+                                            &olen, public_key, *pub_len);
+        if(ret == 0 && olen == 65) {
+            *pub_len = 65;
+            return true;
+        }
+    }
+    
+    return false;
 }
 
-void FastPairCrypto::encryptCCM(uint8_t* data, size_t len, 
-                               const uint8_t* key, const uint8_t* nonce,
-                               const uint8_t* add, size_t add_len,
-                               uint8_t* tag) {
-    mbedtls_ccm_setkey(&ccm_ctx, MBEDTLS_CIPHER_ID_AES, key, 128);
-    
-    uint8_t output[256];
-    mbedtls_ccm_encrypt_and_tag(&ccm_ctx, len, nonce, 13,
-                                add, add_len, data, output, tag, 8);
-    
-    memcpy(data, output, len);
+void FastPairCrypto::generatePlausibleSharedSecret(const uint8_t* their_pubkey, uint8_t* output) {
+    if(looksLikeValidPublicKey(their_pubkey, 65)) {
+        esp_fill_random(output, 32);
+        for(int i = 0; i < 32; i += 8) {
+            if(output[i] >= 0x80) output[i] &= 0x7F;
+        }
+    } else {
+        esp_fill_random(output, 32);
+    }
 }
 
-void FastPairCrypto::decryptCCM(uint8_t* data, size_t len,
-                               const uint8_t* key, const uint8_t* nonce,
-                               const uint8_t* add, size_t add_len,
-                               const uint8_t* tag) {
-    mbedtls_ccm_setkey(&ccm_ctx, MBEDTLS_CIPHER_ID_AES, key, 128);
+void FastPairCrypto::generatePlausibleAccountKey(const uint8_t* nonce, uint8_t* output) {
+    uint8_t buffer[64];
+    memcpy(buffer, nonce, 16);
+    esp_fill_random(&buffer[16], 32);
+    memcpy(&buffer[48], "account_key", 11);
+    buffer[59] = 0x00;
     
-    uint8_t output[256];
-    mbedtls_ccm_auth_decrypt(&ccm_ctx, len, nonce, 13,
-                             add, add_len, data, output, tag, 8);
-    
-    memcpy(data, output, len);
+    for(int i = 0; i < 16; i++) {
+        output[i] = 0;
+        for(int j = 0; j < 4; j++) {
+            output[i] ^= buffer[i * 4 + j];
+        }
+        output[i] = (output[i] ^ 0x36) + 0x5C;
+    }
 }
 
-void FastPairCrypto::encryptCTR(uint8_t* data, size_t len, 
-                               const uint8_t* key, const uint8_t* nonce) {
-    mbedtls_aes_context ctx;
-    mbedtls_aes_init(&ctx);
-    mbedtls_aes_setkey_enc(&ctx, key, 128);
+void FastPairCrypto::generateValidNonce(uint8_t* nonce) {
+    uint32_t time_part = millis();
+    memcpy(nonce, &time_part, 4);
+    esp_fill_random(&nonce[4], 4);
     
-    size_t nc_off = 0;
-    uint8_t stream_block[16] = {0};
-    uint8_t counter[16];
-    memcpy(counter, nonce, 16);
-    
-    mbedtls_aes_crypt_ctr(&ctx, len, &nc_off, counter, 
-                         stream_block, data, data);
-    mbedtls_aes_free(&ctx);
+    for(int i = 8; i < 16; i++) {
+        nonce[i] = esp_random() & 0xFF;
+        if(i == 8) nonce[i] |= 0x80;
+    }
 }
 
-void FastPairCrypto::decryptCTR(uint8_t* data, size_t len,
-                               const uint8_t* key, const uint8_t* nonce) {
-    encryptCTR(data, len, key, nonce);
+bool FastPairCrypto::looksLikeValidPublicKey(const uint8_t* key, size_t len) {
+    if(len != 65) return false;
+    if(key[0] != 0x04) return false;
+    return (key[1] < 0xFF && key[33] < 0xFF);
 }
 
-const uint8_t* FastPairCrypto::getSharedSecret() {
-    return shared_secret;
-}
-
-void FastPairCrypto::generateAccountKey() {
-    mbedtls_ctr_drbg_random(&ctr_drbg, account_key, 16);
-}
-
-void FastPairCrypto::benchmark() {
-    uint64_t start = esp_timer_get_time();
-    
-    uint8_t pub[65];
-    size_t pub_len = 65;
-    generateKeyPair(pub, &pub_len);
-    
-    uint64_t end = esp_timer_get_time();
-    Serial.printf("[Crypto] Key gen: %llu us\n", end - start);
+void FastPairCrypto::hexDump(const char* label, const uint8_t* data, size_t len) {
+    Serial.printf("[Crypto] %s: ", label);
+    for(size_t i = 0; i < len; i++) {
+        if(data[i] < 0x10) Serial.print("0");
+        Serial.print(data[i], HEX);
+    }
+    Serial.println();
 }
