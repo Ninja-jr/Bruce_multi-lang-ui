@@ -359,34 +359,64 @@ String selectTargetFromScan(const char* title) {
     pBLEScan->setActiveScan(true);
     pBLEScan->setInterval(100);
     pBLEScan->setWindow(99);
+    pBLEScan->setDuplicateFilter(true);
     
-    tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
+    tft.fillRect(20, 60, tftWidth - 40, 80, bruceConfig.bgColor);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Scanning for 20s...");
     tft.setCursor(20, 80);
-    tft.print("Please wait");
+    tft.print("Found: 0 devices");
+    tft.setCursor(20, 100);
+    tft.print("Press ESC to cancel");
     
-    bool scanStarted = pBLEScan->start(20, false);
-    delay(20);
+    int foundDuringScan = 0;
+    class ScanCallback : public NimBLEScanCallbacks {
+    public:
+        int& count;
+        ScanCallback(int& c) : count(c) {}
+        
+        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+            count++;
+        }
+    };
     
-    unsigned long startTime = millis();
-    while (pBLEScan->isScanning() && (millis() - startTime < 21000)) {
-        delay(100);
-    }
+    ScanCallback scanCallback(foundDuringScan);
+    pBLEScan->setScanCallbacks(&scanCallback);
     
-    if (pBLEScan->isScanning()) {
-        pBLEScan->stop();
+    unsigned long scanStart = millis();
+    pBLEScan->start(20, false);
+    
+    unsigned long lastUpdate = millis();
+    
+    while (pBLEScan->isScanning()) {
+        unsigned long now = millis();
+        int elapsed = (now - scanStart) / 1000;
+        
+        if (now - lastUpdate >= 1000) {
+            lastUpdate = now;
+            tft.fillRect(20, 80, 200, 20, bruceConfig.bgColor);
+            tft.setCursor(20, 80);
+            tft.printf("Found: %d devices", foundDuringScan);
+        }
+        
+        if (check(EscPress)) {
+            pBLEScan->stop();
+            return "";
+        }
+        
+        delay(50);
     }
     
     NimBLEScanResults foundDevices = pBLEScan->getResults();
     int deviceCount = foundDevices.getCount();
     
-    tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
+    tft.fillRect(20, 60, tftWidth - 40, 80, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Scan complete!");
     tft.setCursor(20, 80);
-    tft.print("Found: " + String(deviceCount) + " device(s)");
+    tft.printf("Found: %d device(s)", deviceCount);
+    
     delay(1500);
     
     if (deviceCount == 0) {
