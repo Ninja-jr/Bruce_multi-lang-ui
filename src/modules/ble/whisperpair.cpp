@@ -1011,127 +1011,30 @@ void runProtocolFuzzer(NimBLEAddress target) {
     delay(2000);
 }
 
-void scanAndFingerprintDevices() {
-    tft.fillScreen(TFT_BLUE);
-    drawMainBorderWithTitle("DEVICE SCANNER");
-    tft.setTextColor(TFT_WHITE, TFT_BLUE);
-    tft.setCursor(20, 60);
-    tft.print("Scanning for FastPair devices...");
-    
-    tft.setCursor(20, 90);
-    tft.print("Initializing scanner...");
-    
-    if(!NimBLEDevice::getInitialized()) {
-        NimBLEDevice::init("Bruce-Scanner");
-    }
-    
-    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-    NimBLEDevice::setSecurityAuth(false, false, false);
-    
-    NimBLEScan* pScan = NimBLEDevice::getScan();
-    if(!pScan) {
-        tft.setCursor(20, 120);
-        tft.print("Failed to get scanner!");
-        delay(2000);
-        return;
-    }
-    
-    pScan->setActiveScan(true);
-    pScan->setInterval(67);
-    pScan->setWindow(33);
-    pScan->setDuplicateFilter(true);
-    
-    tft.setCursor(20, 120);
-    tft.print("Starting scan (10s)...");
-    
-    NimBLEScanResults results = pScan->start(10, false);
-    
-    tft.setCursor(20, 150);
-    tft.print("Scan complete!");
-    
-    int fastPairCount = 0;
-    std::vector<String> deviceList;
-    
-    for(int i = 0; i < results.getCount(); i++) {
-        const NimBLEAdvertisedDevice* device = results.getDevice(i);
-        if(!device) continue;
-        
-        if(device->haveManufacturerData()) {
-            std::string mfg = device->getManufacturerData();
-            if(mfg.length() >= 2) {
-                uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
-                if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
-                    fastPairCount++;
-                    
-                    String info = String(device->getName().c_str());
-                    if(info.isEmpty() || info == "(null)") {
-                        info = "Unknown";
-                    }
-                    info += " - " + device->getAddress().toString().c_str() + " - ";
-                    
-                    if(mfg.length() >= 4) {
-                        uint8_t msg_type = mfg[2];
-                        info += "Type: 0x" + String(msg_type, HEX);
-                    }
-                    
-                    info += " RSSI: " + String(device->getRSSI());
-                    deviceList.push_back(info);
-                }
-            }
-        }
-    }
-    
-    pScan->clearResults();
-    
-    std::vector<String> displayLines;
-    displayLines.push_back("Found " + String(fastPairCount) + " FastPair devices:");
-    
-    for(int i = 0; i < std::min((int)deviceList.size(), 6); i++) {
-        displayLines.push_back(deviceList[i]);
-    }
-    
-    if(fastPairCount > 0) {
-        showDeviceInfoScreen("FASTPAIR DEVICES", displayLines, TFT_GREEN, TFT_BLACK);
-    } else {
-        showDeviceInfoScreen("NO DEVICES", {"No FastPair devices found"}, TFT_YELLOW, TFT_BLACK);
-    }
-}
-
 String selectTargetFromScan(const char* title) {
     String selectedMAC = "";
     uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
-    
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Initializing scanner...");
+    tft.print("Scanning for devices...");
     
-    if(!NimBLEDevice::getInitialized()) {
-        NimBLEDevice::init("TargetScanner");
-    }
-    
+    NimBLEDevice::deinit(true);
+    delay(100);
+    NimBLEDevice::init("TargetScanner");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::setSecurityAuth(false, false, false);
-    
     NimBLEScan* pBLEScan = NimBLEDevice::getScan();
-    if(!pBLEScan) {
-        showErrorMessage("Failed to create scanner");
-        return "";
-    }
-    
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
     pBLEScan->setInterval(67);
     pBLEScan->setWindow(33);
     pBLEScan->setDuplicateFilter(true);
     
-    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("Scanning for 15s...");
-    
-    NimBLEScanResults foundDevices = pBLEScan->start(15, false);
+    unsigned long scanStart = millis();
+    pBLEScan->start(0, true);
     
     struct ScanDevice {
         String name;
@@ -1141,6 +1044,18 @@ String selectTargetFromScan(const char* title) {
         bool fastPair;
     };
     std::vector<ScanDevice> devices;
+    
+    while (millis() - scanStart < 15000) {
+        if (check(EscPress)) {
+            pBLEScan->stop();
+            NimBLEDevice::deinit(true);
+            return "";
+        }
+        delay(10);
+    }
+    
+    pBLEScan->stop();
+    const NimBLEScanResults& foundDevices = pBLEScan->getResults();
     
     for(int i = 0; i < foundDevices.getCount(); i++) {
         const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
@@ -1153,7 +1068,7 @@ String selectTargetFromScan(const char* title) {
         dev.rssi = device->getRSSI();
         dev.fastPair = false;
         
-        if(dev.name.isEmpty() || dev.name == "(null)") {
+        if (dev.name.isEmpty() || dev.name == "(null)") {
             dev.name = dev.address;
         }
         
@@ -1171,8 +1086,9 @@ String selectTargetFromScan(const char* title) {
     }
     
     pBLEScan->clearResults();
+    NimBLEDevice::deinit(true);
     
-    if(devices.empty()) {
+    if (devices.empty()) {
         showWarningMessage("NO DEVICES FOUND");
         delay(1500);
         return "";
@@ -1480,10 +1396,6 @@ void whisperPairMenu() {
         NimBLEAddress target = parseAddress(targetInfo);
         diagnoseConnection(target);
         showAdaptiveMessage("Diagnosis complete", "OK", "", "", TFT_WHITE, true, false);
-    }});
-    
-    options.push_back({"[Scan FastPair Devices]", []() {
-        scanAndFingerprintDevices();
     }});
     
     options.push_back({"[Test Crypto Validation]", []() {
