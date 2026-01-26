@@ -46,7 +46,7 @@ void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, u
     }
 }
 
-int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char* btn2 = "", const char* btn3 = "", uint16_t color = TFT_WHITE, bool showEscHint = true, bool autoProgress = false) {
+int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, const char* btn3, uint16_t color, bool showEscHint, bool autoProgress) {
     int buttonCount = 0;
     if(strlen(btn1) > 0) buttonCount++;
     if(strlen(btn2) > 0) buttonCount++;
