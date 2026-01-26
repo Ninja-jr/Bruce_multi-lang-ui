@@ -152,7 +152,12 @@ bool FastPairCrypto::deriveAccountKey(const uint8_t* shared_secret,
     uint8_t input[16] = {0};
     memcpy(input, "account_key", 11);
     
-    int ret = mbedtls_aes_crypt_ctr(&aes_ctx, 16, counter, input, account_key);
+    // FIXED: Proper mbedtls_aes_crypt_ctr parameters
+    size_t nc_off = 0;
+    unsigned char stream_block[16] = {0};
+    
+    int ret = mbedtls_aes_crypt_ctr(&aes_ctx, 16, &nc_off, counter, 
+                                   stream_block, input, account_key);
     
     return (ret == 0);
 }
