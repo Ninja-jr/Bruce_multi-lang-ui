@@ -36,3 +36,7 @@ void showWarningMessage(const char* message);
 bool check(uint8_t key);
 extern struct BruceConfig bruceConfig;
 extern volatile int tftWidth;
+
+// Connection diagnostics
+void diagnoseConnection(NimBLEAddress target);
+bool connectWithRetry(NimBLEAddress target, int maxRetries = 3);
