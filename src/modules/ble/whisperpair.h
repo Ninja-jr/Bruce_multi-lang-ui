@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include <MenuItemInterface.h>
+#include <core/display.h>
 #include <functional>
 #include <vector>
 
