@@ -11,7 +11,7 @@
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
 extern volatile int tftWidth;
-extern int tftHeight;  // Add this line
+extern volatile int tftHeight;
 
 #if __has_include(<NimBLEExtAdvertising.h>)
 #define NIMBLE_V2_PLUS 1
