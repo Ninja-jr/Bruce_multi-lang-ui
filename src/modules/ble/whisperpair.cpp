@@ -11,10 +11,20 @@
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
 extern volatile int tftWidth;
+extern int tftHeight;  // Add this line
 
 #if __has_include(<NimBLEExtAdvertising.h>)
 #define NIMBLE_V2_PLUS 1
 #endif
+
+void drawMainBorderWithTitle(const char* title) {
+    tft.drawRect(0, 0, tftWidth, 30, TFT_WHITE);
+    tft.fillRect(0, 0, tftWidth, 30, bruceConfig.priColor);
+    tft.setTextColor(TFT_WHITE, bruceConfig.priColor);
+    tft.setCursor(10, 8);
+    tft.print(title);
+    tft.drawRect(0, 30, tftWidth, tftHeight - 30, TFT_WHITE);
+}
 
 AudioCommandService audioCmd;
 FastPairCrypto crypto;
