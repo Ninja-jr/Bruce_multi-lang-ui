@@ -42,3 +42,21 @@ bool connectWithRetry(NimBLEAddress target, int maxRetries, NimBLEClient** outCl
 void testConnectionDiagnostic();
 void audioCommandHijackTest();
 void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, uint16_t bgColor = TFT_BLACK, uint16_t textColor = TFT_WHITE);
+
+struct CapturedKeys {
+    uint8_t phone_public_key[65];
+    uint8_t phone_private_key[32];
+    uint8_t target_public_key[65];
+    uint8_t shared_secret[32];
+    uint8_t account_key[16];
+    uint8_t spoofed_mac[6];
+    bool keys_captured;
+};
+
+bool captureLivePairing(const char* scanName = "CAPTURE");
+bool performMITMAttack(NimBLEAddress target, CapturedKeys& keys);
+bool activateMicrophoneHijack(NimBLEAddress target);
+bool simulateHIDKeyboard(NimBLEAddress target);
+bool checkBackdoorAccess(NimBLEAddress target);
+void spoofBluetoothAddress(const uint8_t* new_mac);
+void advancedMITMMenu();
