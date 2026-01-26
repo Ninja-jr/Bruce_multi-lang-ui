@@ -9,7 +9,7 @@
 
 #include <Arduino.h>
 #include <MenuItemInterface.h>
-#include <core/display.h>
+#include "core/display.h"
 #include <functional>
 #include <vector>
 
@@ -33,7 +33,6 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1 = "", const char*
 void showErrorMessage(const char* message);
 void showSuccessMessage(const char* message);
 void showWarningMessage(const char* message);
-void drawMainBorderWithTitle(const char* title);
 bool check(uint8_t key);
 extern struct BruceConfig bruceConfig;
 extern volatile int tftWidth;
