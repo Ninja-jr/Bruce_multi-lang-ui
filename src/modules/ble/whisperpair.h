@@ -37,6 +37,8 @@ bool check(uint8_t key);
 extern struct BruceConfig bruceConfig;
 extern volatile int tftWidth;
 
-// Connection diagnostics
 void diagnoseConnection(NimBLEAddress target);
-bool connectWithRetry(NimBLEAddress target, int maxRetries = 3);
+bool connectWithRetry(NimBLEAddress target, int maxRetries, NimBLEClient** outClient);
+void testConnectionDiagnostic();
+void audioCommandHijackTest();
+void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, uint16_t bgColor = TFT_BLACK, uint16_t textColor = TFT_WHITE);
