@@ -114,7 +114,7 @@ void audioCommandHijackTest();
 void executeAudioTest(int testIndex, NimBLEAddress target);
 void showAttackProgress(const char* message, uint16_t color = TFT_WHITE);
 void showAttackResult(bool success, const char* message = nullptr);
-bool confirmAttack(const char* message);
+bool confirmAttack(const char* targetName);
 void clearMenu();
 String selectTargetFromScan(const char* title);
 NimBLEAddress parseAddress(const String& addressInfo);
