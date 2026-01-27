@@ -1466,16 +1466,6 @@ String selectTargetFromScan(const char* title) {
     String selectedMAC = "";
     uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
 
-    if(isBLEInitialized()) {
-        if(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning()) {
-            NimBLEDevice::getScan()->stop();
-            delay(300);
-        }
-        if(NimBLEDevice::getScan()) {
-            NimBLEDevice::getScan()->clearResults();
-        }
-    }
-
     tft.fillScreen(bruceConfig.bgColor);
     tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -1486,16 +1476,23 @@ String selectTargetFromScan(const char* title) {
     
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Initializing scanner...");
+    tft.print("Initializing BLE...");
 
-    if(isBLEInitialized()) {
+    bool wasInitialized = isBLEInitialized();
+    if(wasInitialized) {
+        if(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning()) {
+            NimBLEDevice::getScan()->stop();
+            delay(300);
+        }
         NimBLEDevice::deinit(true);
-        delay(500);
+        delay(800);
     }
+
     NimBLEDevice::init("Bruce-Scanner");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::setSecurityAuth(false, false, false);
-    delay(300);
+    NimBLEDevice::setMTU(200);
+    delay(500);
 
     NimBLEScan* pBLEScan = NimBLEDevice::getScan();
     if(!pBLEScan) {
@@ -1506,17 +1503,24 @@ String selectTargetFromScan(const char* title) {
 
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(97);
-    pBLEScan->setWindow(48);
+    pBLEScan->setInterval(100);
+    pBLEScan->setWindow(99);
     pBLEScan->setDuplicateFilter(false);
     pBLEScan->setMaxResults(0);
 
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Scanning for 12s...");
+    tft.print("Scanning for 15s...");
 
     unsigned long scanStart = millis();
-    pBLEScan->start(12, false);
+    bool scanStarted = pBLEScan->start(15, false);
+    
+    if(!scanStarted) {
+        showErrorMessage("Failed to start scan");
+        pBLEScan->clearResults();
+        NimBLEDevice::deinit(true);
+        return "";
+    }
 
     struct ScanDevice {
         String name;
@@ -1527,38 +1531,54 @@ String selectTargetFromScan(const char* title) {
     };
     std::vector<ScanDevice> devices;
 
-    NimBLEScanResults foundDevices = pBLEScan->getResults();
+    while(millis() - scanStart < 16000) {
+        delay(100);
+        
+        NimBLEScanResults foundDevices = pBLEScan->getResults();
+        
+        for(int i = 0; i < foundDevices.getCount(); i++) {
+            const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
+            if(!device) continue;
 
-    for(int i = 0; i < foundDevices.getCount(); i++) {
-        const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
-        if(!device) continue;
-
-        ScanDevice dev;
-        std::string nameStdStr = device->getName();
-        dev.name = String(nameStdStr.c_str());
-        std::string addrStdStr = device->getAddress().toString();
-        dev.address = String(addrStdStr.c_str());
-        dev.addrType = device->getAddressType();
-        dev.rssi = device->getRSSI();
-        dev.fastPair = false;
-
-        if(dev.name.isEmpty() || dev.name == "(null)") {
-            dev.name = dev.address;
-        }
-
-        if(device->haveManufacturerData()) {
-            std::string mfg = device->getManufacturerData();
-            if(mfg.length() >= 2) {
-                uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
-                if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
-                    dev.fastPair = true;
+            bool alreadyFound = false;
+            std::string newAddr = device->getAddress().toString();
+            
+            for(const auto& dev : devices) {
+                if(dev.address == String(newAddr.c_str())) {
+                    alreadyFound = true;
+                    break;
                 }
             }
-        }
+            
+            if(alreadyFound) continue;
 
-        devices.push_back(dev);
+            ScanDevice dev;
+            std::string nameStdStr = device->getName();
+            dev.name = String(nameStdStr.c_str());
+            dev.address = String(newAddr.c_str());
+            dev.addrType = device->getAddressType();
+            dev.rssi = device->getRSSI();
+            dev.fastPair = false;
+
+            if(dev.name.isEmpty() || dev.name == "(null)") {
+                dev.name = "Unknown";
+            }
+
+            if(device->haveManufacturerData()) {
+                std::string mfg = device->getManufacturerData();
+                if(mfg.length() >= 2) {
+                    uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
+                    if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
+                        dev.fastPair = true;
+                    }
+                }
+            }
+
+            devices.push_back(dev);
+        }
     }
 
+    pBLEScan->stop();
     pBLEScan->clearResults();
     NimBLEDevice::deinit(true);
     delay(300);
