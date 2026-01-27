@@ -6,7 +6,7 @@
 #include <TFT_eSPI.h>
 #include <esp_heap_caps.h>
 
-extern TFT_eSPI tft;
+extern tft_logger tft;
 extern BruceConfig bruceConfig;
 extern volatile int tftWidth;
 extern volatile int tftHeight;
@@ -1021,7 +1021,7 @@ bool safeConnectWithRetry(NimBLEAddress target, int maxRetries, NimBLEClient** o
     return false;
 }
 
-void showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, const char* btn3, uint16_t color, bool showEscHint, bool autoProgress) {
+int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, const char* btn3, uint16_t color, bool showEscHint, bool autoProgress) {
     int buttonCount = 0;
     if(strlen(btn1) > 0) buttonCount++;
     if(strlen(btn2) > 0) buttonCount++;
@@ -1044,7 +1044,7 @@ void showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, 
             tft.print(line1);
         }
         delay(1500);
-        return;
+        return 0;
     }
     if(buttonCount == 0) {
         tft.fillScreen(bruceConfig.bgColor);
@@ -1069,7 +1069,7 @@ void showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, 
         while(true) {
             if(check(EscPress) || check(SelPress) || check(PrevPress) || check(NextPress)) {
                 delay(200);
-                return;
+                return 0;
             }
             delay(50);
         }
@@ -1118,11 +1118,11 @@ void showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, 
         while(true) {
             if(check(EscPress)) {
                 delay(200);
-                return;
+                return -1;
             }
             if(check(SelPress)) {
                 delay(200);
-                return;
+                return 0;
             }
             delay(50);
         }
@@ -1137,6 +1137,7 @@ void showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, 
         int btnWidth = 80;
         int btnHeight = 35;
         int btnY = 150;
+        int8_t result = -2;
         
         if(strlen(btn1) > 0) {
             tft.fillRoundRect(50, btnY, btnWidth, btnHeight, 5, bruceConfig.priColor);
@@ -1167,19 +1168,19 @@ void showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, 
         while(true) {
             if(check(EscPress)) {
                 delay(200);
-                return;
+                return -1;
             }
             if(check(SelPress)) {
                 delay(200);
-                return;
+                return 0;
             }
             if(check(NextPress)) {
                 delay(200);
-                return;
+                return 1;
             }
             if(strlen(btn3) > 0 && check(PrevPress)) {
                 delay(200);
-                return;
+                return 2;
             }
             delay(50);
         }
