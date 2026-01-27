@@ -6,49 +6,18 @@
 #include <WString.h>
 #include <vector>
 
-extern "C" {
-#include "esp_heap_caps.h"
-}
-
-#ifndef TFT_WHITE
 #define TFT_WHITE 0xFFFF
-#endif
-
-#ifndef TFT_BLACK
 #define TFT_BLACK 0x0000
-#endif
-
-#ifndef TFT_RED
 #define TFT_RED 0xF800
-#endif
-
-#ifndef TFT_GREEN
 #define TFT_GREEN 0x07E0
-#endif
-
-#ifndef TFT_BLUE
 #define TFT_BLUE 0x001F
-#endif
-
-#ifndef TFT_YELLOW
 #define TFT_YELLOW 0xFFE0
-#endif
-
-#ifndef TFT_CYAN
 #define TFT_CYAN 0x07FF
-#endif
-
-#ifndef TFT_MAGENTA
 #define TFT_MAGENTA 0xF81F
-#endif
-
-#ifndef TFT_ORANGE
 #define TFT_ORANGE 0xFDA0
-#endif
-
-#ifndef TFT_GRAY
 #define TFT_GRAY 0x8410
-#endif
+#define TFT_DARKGREY 0x4208
+#define TFT_DARKGREEN 0x0320
 
 class BLEAttackManager {
 private:
@@ -102,23 +71,31 @@ public:
     bool isDeviceConnected();
 };
 
-bool safeConnectWithRetry(NimBLEAddress target, int maxRetries, NimBLEClient** outClient);
+void whisperPairMenu();
+void showAttackMenuWithTarget(NimBLEAddress target);
+void executeSelectedAttack(int attackIndex, NimBLEAddress target);
+void runWhisperPairAttack(NimBLEAddress target);
+void runAudioStackCrash(NimBLEAddress target);
+void runMediaCommandHijack(NimBLEAddress target);
+void runQuickTest(NimBLEAddress target);
+void runWriteAccessTest(NimBLEAddress target);
+void runProtocolFuzzer(NimBLEAddress target);
+void runJamConnectAttack(NimBLEAddress target);
+void runHIDTest(NimBLEAddress target);
+void runAudioControlTest(NimBLEAddress target);
+void runAudioHijackTest();
+void executeAudioTest(int testIndex, NimBLEAddress target);
+void showAttackProgress(const char* message, uint16_t color = TFT_WHITE);
+void showAttackResult(bool success, const char* message = nullptr);
+bool confirmAttack(const char* message);
+void clearMenu();
+String selectTargetFromScan(const char* title);
+NimBLEAddress parseAddress(const String& addressInfo);
+bool requireSimpleConfirmation(const char* message);
 int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, const char* btn3, uint16_t color, bool showEscHint, bool autoProgress);
 void showWarningMessage(const char* message);
 void showErrorMessage(const char* message);
 void showSuccessMessage(const char* message);
 void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, uint16_t bgColor, uint16_t textColor);
-NimBLEAddress parseAddress(const String& addressInfo);
-String selectTargetFromScan(const char* title);
-bool requireSimpleConfirmation(const char* message);
-void showAttackResult(bool success, const char* message = nullptr);
-bool confirmAttack(const char* targetName);
-void runWhisperPairAttack(NimBLEAddress target);
-void runAudioStackCrash(NimBLEAddress target);
-void runMediaCommandHijack(NimBLEAddress target);
-void runQuickTest(NimBLEAddress target);
-void audioCommandHijackTest();
-void whisperPairMenu();
-void showAttackProgress(const char* message, uint16_t color = TFT_WHITE);
 
 #endif
