@@ -865,7 +865,10 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 60);
     tft.print("Scanning for 15s...");
     
-    NimBLEScanResults foundDevices = pBLEScan->start(15, false);
+    pBLEScan->start(15, false);
+    delay(15000);
+    
+    NimBLEScanResults foundDevices = pBLEScan->getResults();
     
     struct ScanDevice {
         String name;
