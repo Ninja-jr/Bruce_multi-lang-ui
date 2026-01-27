@@ -5,6 +5,9 @@
 #include "modules/ble/ble_common.h"
 #include "modules/ble/ble_ninebot.h"
 #include "modules/ble/ble_spam.h"
+#if !defined(LITE_VERSION)
+#include "modules/ble/whisperpair.h"
+#endif
 #include <globals.h>
 
 void BleMenu::optionsMenu() {
@@ -13,33 +16,37 @@ void BleMenu::optionsMenu() {
     if (BLEConnected) {
         options.push_back({"Disconnect", [=]() {
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
-                               esp_bt_controller_deinit();
+            esp_bt_controller_deinit();
 #else
-                               BLEDevice::deinit();
+            BLEDevice::deinit();
 #endif
-                               BLEConnected = false;
-                               delete hid_ble;
-                               hid_ble = nullptr;
-                               if (_Ask_for_restart == 1)
-                                   _Ask_for_restart = 2;
-                           }});
+            BLEConnected = false;
+            delete hid_ble;
+            hid_ble = nullptr;
+            if (_Ask_for_restart == 1)
+                _Ask_for_restart = 2;
+        }});
     }
 
     options.push_back({"Media Cmds", [=]() { MediaCommands(hid_ble, true); }});
 #if !defined(LITE_VERSION)
-    options.push_back({"Presenter", [=]() { PresenterMode(hid_ble, true); }});
     options.push_back({"BLE Scan", ble_scan});
     options.push_back({"iBeacon", [=]() { ibeacon(); }});
     options.push_back({"Bad BLE", [=]() { ducky_setup(hid_ble, true); }});
 #endif
     options.push_back({"BLE Keyboard", [=]() { ducky_keyboard(hid_ble, true); }});
     options.push_back({"BLE Spam", [=]() { spamMenu(); }});
+
+#if !defined(LITE_VERSION)
+    options.push_back({"WhisperPair", [=]() { whisperPairMenu(); }});
+#endif
+
 #if !defined(LITE_VERSION)
     options.push_back({"Ninebot", [=]() { BLENinebot(); }});
 #endif
     addOptionToMainMenu();
 
-    loopOptions(options, MENU_TYPE_SUBMENU, "Bluetooth");
+    loopOptions(options, MENU_TYPE_SUBMENU, "Bluetooth", 0, false);
 }
 
 void BleMenu::drawIcon(float scale) {
