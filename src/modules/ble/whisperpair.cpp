@@ -9,6 +9,7 @@
 #include "modules/NRF24/nrf_jammer_api.h"
 #include <algorithm>
 #include "esp_heap_caps.h"
+#include <vector>
 
 extern std::vector<String> fastPairDevices;
 extern bool returnToMenu;
