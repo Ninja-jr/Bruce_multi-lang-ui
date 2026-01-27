@@ -1466,7 +1466,7 @@ String selectTargetFromScan(const char* title) {
     String selectedMAC = "";
     uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
 
-    if(NimBLEDevice::getInitialized()) {
+    if(isBLEInitialized()) {
         if(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning()) {
             NimBLEDevice::getScan()->stop();
             delay(300);
@@ -1488,7 +1488,7 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 60);
     tft.print("Initializing scanner...");
 
-    if(NimBLEDevice::getInitialized()) {
+    if(isBLEInitialized()) {
         NimBLEDevice::deinit(true);
         delay(500);
     }
