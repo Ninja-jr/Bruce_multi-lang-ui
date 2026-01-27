@@ -5,6 +5,9 @@
 #include <vector>
 #include "fastpair_crypto.h"
 
+struct GlobalState;
+extern GlobalState globalState;
+
 class BLEAttackManager {
 private:
     bool wasScanning = false;
@@ -47,11 +50,10 @@ public:
 };
 
 void whisperPairMenu();
-void showAttackProgress(const char* message, uint32_t color = TFT_YELLOW);
+void showAttackProgress(const char* message, uint32_t color = 0xFFE0);
 void showAttackResult(bool success, const char* message = nullptr);
 bool confirmAttack(const char* targetName);
 void runWhisperPairAttack();
-void runAudioHijackTest();
 void runAudioStackCrash();
 void runMediaCommandHijack();
 void runQuickTest();
