@@ -63,7 +63,7 @@ public:
 };
 
 bool safeConnectWithRetry(NimBLEAddress target, int maxRetries, NimBLEClient** outClient);
-void showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, const char* btn3, uint16_t color, bool showEscHint, bool autoProgress);
+int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2, const char* btn3, uint16_t color, bool showEscHint, bool autoProgress);
 void showWarningMessage(const char* message);
 void showErrorMessage(const char* message);
 void showSuccessMessage(const char* message);
@@ -71,7 +71,7 @@ void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, u
 NimBLEAddress parseAddress(const String& addressInfo);
 String selectTargetFromScan(const char* title);
 bool requireSimpleConfirmation(const char* message);
-void showAttackProgress(const char* message, uint32_t color = TFT_WHITE);
+void showAttackProgress(const char* message, uint32_t color);
 void showAttackResult(bool success, const char* message = nullptr);
 bool confirmAttack(const char* targetName);
 void runWhisperPairAttack(NimBLEAddress target);
