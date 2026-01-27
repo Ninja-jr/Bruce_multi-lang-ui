@@ -856,19 +856,16 @@ String selectTargetFromScan(const char* title) {
     
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(97);
-    pBLEScan->setWindow(48);
+    pBLEScan->setInterval(67);
+    pBLEScan->setWindow(33);
     pBLEScan->setDuplicateFilter(true);
-    pBLEScan->setMaxResults(50);
     
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Scanning for 15s...");
     
-    pBLEScan->start(15, false);
-    delay(15000);
-    
-    NimBLEScanResults foundDevices = pBLEScan->getResults();
+    unsigned long scanStart = millis();
+    pBLEScan->start(0, true);
     
     struct ScanDevice {
         String name;
@@ -878,6 +875,17 @@ String selectTargetFromScan(const char* title) {
         bool fastPair;
     };
     std::vector<ScanDevice> devices;
+    
+    while (millis() - scanStart < 15000) {
+        if (check(EscPress)) {
+            pBLEScan->stop();
+            return "";
+        }
+        delay(10);
+    }
+    
+    pBLEScan->stop();
+    NimBLEScanResults foundDevices = pBLEScan->getResults();
     
     for(int i = 0; i < foundDevices.getCount(); i++) {
         const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
