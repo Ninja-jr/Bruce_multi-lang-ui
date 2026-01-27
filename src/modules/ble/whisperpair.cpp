@@ -23,6 +23,9 @@ void BLEAttackManager::prepareForConnection() {
             NimBLEDevice::getScan()->stop();
             delay(300);
         }
+        if(NimBLEDevice::getScan()) {
+            NimBLEDevice::getScan()->clearResults();
+        }
         NimBLEDevice::deinit(true);
         delay(500);
     }
@@ -1463,6 +1466,16 @@ String selectTargetFromScan(const char* title) {
     String selectedMAC = "";
     uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
 
+    if(NimBLEDevice::getInitialized()) {
+        if(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning()) {
+            NimBLEDevice::getScan()->stop();
+            delay(300);
+        }
+        if(NimBLEDevice::getScan()) {
+            NimBLEDevice::getScan()->clearResults();
+        }
+    }
+
     tft.fillScreen(bruceConfig.bgColor);
     tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
@@ -1475,8 +1488,10 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 60);
     tft.print("Initializing scanner...");
 
-    NimBLEDevice::deinit(true);
-    delay(500);
+    if(NimBLEDevice::getInitialized()) {
+        NimBLEDevice::deinit(true);
+        delay(500);
+    }
     NimBLEDevice::init("Bruce-Scanner");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::setSecurityAuth(false, false, false);
@@ -1886,7 +1901,7 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2
 void showWarningMessage(const char* message) {
     tft.fillScreen(TFT_YELLOW);
     tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_BLACK);
-    tft.setTextColor(TFT_WHITE, TFT_YELLOW);
+    tft.setTextColor(TFT_BLACK, TFT_YELLOW);
     tft.setTextSize(2);
     tft.setCursor((tftWidth - strlen("WARNING") * 12) / 2, 15);
     tft.print("WARNING");
