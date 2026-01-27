@@ -1,7 +1,6 @@
 #ifndef WHISPERPAIR_H
 #define WHISPERPAIR_H
 
-#include <TFT_eSPI.h>
 #include <NimBLEDevice.h>
 #include "fastpair_crypto.h"
 #include <WString.h>
@@ -11,11 +10,51 @@ extern "C" {
 #include "esp_heap_caps.h"
 }
 
+#ifndef TFT_WHITE
+#define TFT_WHITE 0xFFFF
+#endif
+
+#ifndef TFT_BLACK
+#define TFT_BLACK 0x0000
+#endif
+
+#ifndef TFT_RED
+#define TFT_RED 0xF800
+#endif
+
+#ifndef TFT_GREEN
+#define TFT_GREEN 0x07E0
+#endif
+
+#ifndef TFT_BLUE
+#define TFT_BLUE 0x001F
+#endif
+
+#ifndef TFT_YELLOW
+#define TFT_YELLOW 0xFFE0
+#endif
+
+#ifndef TFT_CYAN
+#define TFT_CYAN 0x07FF
+#endif
+
+#ifndef TFT_MAGENTA
+#define TFT_MAGENTA 0xF81F
+#endif
+
+#ifndef TFT_ORANGE
+#define TFT_ORANGE 0xFDA0
+#endif
+
+#ifndef TFT_GRAY
+#define TFT_GRAY 0x8410
+#endif
+
 class BLEAttackManager {
 private:
     bool isInAttackMode = false;
     bool wasScanning = false;
-    
+
 public:
     void prepareForConnection();
     void cleanupAfterAttack();
@@ -26,12 +65,12 @@ class WhisperPairExploit {
 private:
     BLEAttackManager bleManager;
     FastPairCrypto crypto;
-    
+
     NimBLERemoteCharacteristic* findKBPCharacteristic(NimBLERemoteService* fastpairService);
     bool performHandshake(NimBLERemoteCharacteristic* kbpChar);
     bool sendExploitPayload(NimBLERemoteCharacteristic* kbpChar);
     bool testForVulnerability(NimBLERemoteCharacteristic* kbpChar);
-    
+
 public:
     bool execute(NimBLEAddress target);
     bool executeSilent(NimBLEAddress target);
@@ -54,7 +93,7 @@ private:
     NimBLEService* pAudioService;
     NimBLECharacteristic* pCmdCharacteristic;
     bool isConnected;
-    
+
 public:
     AudioCommandService();
     void start();
