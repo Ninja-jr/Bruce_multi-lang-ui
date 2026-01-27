@@ -674,7 +674,13 @@ void showAttackMenuWithTarget(NimBLEAddress target) {
     
     while(!exitMenu) {
         clearMenu();
-        drawMainBorderWithTitle("WHISPERPAIR ATTACK SUITE");
+        tft.fillScreen(bruceConfig.bgColor);
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("WHISPERPAIR ATTACK SUITE") * 12) / 2, 15);
+        tft.print("WHISPERPAIR ATTACK SUITE");
+        tft.setTextSize(1);
         
         tft.setTextColor(TFT_YELLOW, bruceConfig.bgColor);
         tft.setCursor(20, 40);
@@ -794,7 +800,7 @@ void executeSelectedAttack(int attackIndex, NimBLEAddress target) {
             runAudioControlTest(target);
             break;
         case 9:
-            runAudioHijackTest();
+            audioCommandHijackTest();
             break;
     }
 }
@@ -863,9 +869,11 @@ void runWriteAccessTest(NimBLEAddress target) {
         const std::vector<NimBLERemoteCharacteristic*>& chars = service->getCharacteristics(true);
         for(auto& ch : chars) {
             if(ch->canWrite()) {
-                String charInfo = service->getUUID().toString().c_str();
-                charInfo += " -> ";
-                charInfo += ch->getUUID().toString().c_str();
+                std::string uuidStdStr = service->getUUID().toString();
+                String uuidStr = String(uuidStdStr.c_str());
+                std::string charUuidStdStr = ch->getUUID().toString();
+                String charUuid = String(charUuidStdStr.c_str());
+                String charInfo = uuidStr + " -> " + charUuid;
                 writeableChars.push_back(charInfo);
             }
         }
@@ -1003,7 +1011,10 @@ void runJamConnectAttack(NimBLEAddress target) {
     
     bool connected = false;
     for(int attempt = 0; attempt < 5 && !connected; attempt++) {
-        showAttackProgress("Attempt " + String(attempt+1) + "/5", TFT_YELLOW);
+        char progressMsg[50];
+        snprintf(progressMsg, sizeof(progressMsg), "Attempt %d/5", attempt + 1);
+        showAttackProgress(progressMsg, TFT_YELLOW);
+        
         connected = pClient->connect(target, false);
         
         if(!connected) {
@@ -1059,7 +1070,8 @@ void runHIDTest(NimBLEAddress target) {
     
     for(auto& service : services) {
         NimBLEUUID uuid = service->getUUID();
-        String uuidStr = uuid.toString();
+        std::string uuidStdStr = uuid.toString();
+        String uuidStr = String(uuidStdStr.c_str());
         
         if(uuidStr.indexOf("1812") != -1 ||
            uuidStr.indexOf("1813") != -1 ||
@@ -1072,7 +1084,9 @@ void runHIDTest(NimBLEAddress target) {
         
         const std::vector<NimBLERemoteCharacteristic*>& chars = service->getCharacteristics(true);
         for(auto& ch : chars) {
-            String charUuid = ch->getUUID().toString().c_str();
+            std::string charUuidStdStr = ch->getUUID().toString();
+            String charUuid = String(charUuidStdStr.c_str());
+            
             if(charUuid.indexOf("2a4d") != -1 ||
                charUuid.indexOf("2a22") != -1 ||
                charUuid.indexOf("2a32") != -1) {
@@ -1118,7 +1132,13 @@ void runAudioControlTest(NimBLEAddress target) {
     
     while(!exitSubmenu) {
         clearMenu();
-        drawMainBorderWithTitle("AUDIO CONTROL TEST");
+        tft.fillScreen(bruceConfig.bgColor);
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("AUDIO CONTROL TEST") * 12) / 2, 15);
+        tft.print("AUDIO CONTROL TEST");
+        tft.setTextSize(1);
         
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         tft.setCursor(20, 60);
@@ -1177,8 +1197,96 @@ void runAudioControlTest(NimBLEAddress target) {
     }
 }
 
-void runAudioHijackTest() {
-    audioCommandHijackTest();
+void audioCommandHijackTest() {
+    tft.fillScreen(bruceConfig.bgColor);
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen("AUDIO HIJACK") * 12) / 2, 15);
+    tft.print("AUDIO HIJACK");
+    tft.setTextSize(1);
+    
+    tft.setCursor(20, 60);
+    tft.print("1. Start audio service");
+    tft.setCursor(20, 90);
+    tft.print("2. Connect target device");
+    tft.setCursor(20, 120);
+    tft.print("3. Inject audio commands");
+    tft.setCursor(20, 160);
+    tft.print("SEL: Start  ESC: Back");
+
+    while(true) {
+        if(check(EscPress)) {
+            return;
+        }
+        if(check(SelPress)) {
+            break;
+        }
+        delay(50);
+    }
+
+    showAdaptiveMessage("Starting audio service...", "", "", "", TFT_WHITE, false, true);
+    AudioCommandService audioCmd;
+    audioCmd.start();
+
+    tft.fillScreen(bruceConfig.bgColor);
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen("AUDIO INJECTION") * 12) / 2, 15);
+    tft.print("AUDIO INJECTION");
+    tft.setTextSize(1);
+    
+    tft.setCursor(20, 60);
+    tft.print("Service: RUNNING");
+    tft.setCursor(20, 90);
+    tft.print("Waiting for connection...");
+    tft.setCursor(20, 120);
+    tft.print("Connected: ");
+    tft.setCursor(120, 120);
+    if(audioCmd.isDeviceConnected()) {
+        tft.print("YES");
+    } else {
+        tft.print("NO");
+    }
+
+    tft.setCursor(20, 160);
+    tft.print("SEL: Inject  ESC: Stop");
+
+    unsigned long startTime = millis();
+    while(millis() - startTime < 30000) {
+        if(check(EscPress)) {
+            audioCmd.stop();
+            showAdaptiveMessage("Service stopped", "OK", "", "", TFT_WHITE, true, false);
+            return;
+        }
+
+        if(check(SelPress)) {
+            if(audioCmd.isDeviceConnected()) {
+                uint8_t volume_up[] = {0x01, 0x00, 0x00, 0x00};
+                audioCmd.injectCommand(volume_up, 4);
+                showAdaptiveMessage("Volume up sent!", "", "", "", TFT_GREEN, false, true);
+                delay(500);
+
+                uint8_t play_pause[] = {0x02, 0x00, 0x00, 0x00};
+                audioCmd.injectCommand(play_pause, 4);
+                showAdaptiveMessage("Play/Pause sent!", "", "", "", TFT_GREEN, false, true);
+                delay(500);
+
+                uint8_t next_track[] = {0x03, 0x00, 0x00, 0x00};
+                audioCmd.injectCommand(next_track, 4);
+                showAdaptiveMessage("Next track sent!", "", "", "", TFT_GREEN, false, true);
+                delay(500);
+            } else {
+                showErrorMessage("No device connected!");
+                delay(1000);
+            }
+        }
+        delay(100);
+    }
+
+    audioCmd.stop();
+    showAdaptiveMessage("Timeout - service stopped", "OK", "", "", TFT_WHITE, true, false);
 }
 
 void executeAudioTest(int testIndex, NimBLEAddress target) {
@@ -1271,91 +1379,15 @@ void executeAudioTest(int testIndex, NimBLEAddress target) {
     }
 }
 
-void audioCommandHijackTest() {
-    tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle("AUDIO HIJACK");
-    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("1. Start audio service");
-    tft.setCursor(20, 90);
-    tft.print("2. Connect target device");
-    tft.setCursor(20, 120);
-    tft.print("3. Inject audio commands");
-    tft.setCursor(20, 160);
-    tft.print("SEL: Start  ESC: Back");
-
-    while(true) {
-        if(check(EscPress)) {
-            return;
-        }
-        if(check(SelPress)) {
-            break;
-        }
-        delay(50);
-    }
-
-    showAdaptiveMessage("Starting audio service...", "", "", "", TFT_WHITE, false, true);
-    AudioCommandService audioCmd;
-    audioCmd.start();
-
-    tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle("AUDIO INJECTION");
-    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("Service: RUNNING");
-    tft.setCursor(20, 90);
-    tft.print("Waiting for connection...");
-    tft.setCursor(20, 120);
-    tft.print("Connected: ");
-    tft.setCursor(120, 120);
-    if(audioCmd.isDeviceConnected()) {
-        tft.print("YES");
-    } else {
-        tft.print("NO");
-    }
-
-    tft.setCursor(20, 160);
-    tft.print("SEL: Inject  ESC: Stop");
-
-    unsigned long startTime = millis();
-    while(millis() - startTime < 30000) {
-        if(check(EscPress)) {
-            audioCmd.stop();
-            showAdaptiveMessage("Service stopped", "OK", "", "", TFT_WHITE, true, false);
-            return;
-        }
-
-        if(check(SelPress)) {
-            if(audioCmd.isDeviceConnected()) {
-                uint8_t volume_up[] = {0x01, 0x00, 0x00, 0x00};
-                audioCmd.injectCommand(volume_up, 4);
-                showAdaptiveMessage("Volume up sent!", "", "", "", TFT_GREEN, false, true);
-                delay(500);
-
-                uint8_t play_pause[] = {0x02, 0x00, 0x00, 0x00};
-                audioCmd.injectCommand(play_pause, 4);
-                showAdaptiveMessage("Play/Pause sent!", "", "", "", TFT_GREEN, false, true);
-                delay(500);
-
-                uint8_t next_track[] = {0x03, 0x00, 0x00, 0x00};
-                audioCmd.injectCommand(next_track, 4);
-                showAdaptiveMessage("Next track sent!", "", "", "", TFT_GREEN, false, true);
-                delay(500);
-            } else {
-                showErrorMessage("No device connected!");
-                delay(1000);
-            }
-        }
-        delay(100);
-    }
-
-    audioCmd.stop();
-    showAdaptiveMessage("Timeout - service stopped", "OK", "", "", TFT_WHITE, true, false);
-}
-
 void showAttackProgress(const char* message, uint16_t color) {
     tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle("WHISPERPAIR");
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen("WHISPERPAIR") * 12) / 2, 15);
+    tft.print("WHISPERPAIR");
+    tft.setTextSize(1);
+    
     tft.setTextColor(color, bruceConfig.bgColor);
     tft.setCursor(20, 80);
     tft.print(message);
@@ -1370,11 +1402,21 @@ void showAttackProgress(const char* message, uint16_t color) {
 void showAttackResult(bool success, const char* message) {
     if(success) {
         tft.fillScreen(TFT_GREEN);
-        drawMainBorderWithTitle("SUCCESS");
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_BLACK);
+        tft.setTextColor(TFT_WHITE, TFT_GREEN);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("SUCCESS") * 12) / 2, 15);
+        tft.print("SUCCESS");
+        tft.setTextSize(1);
         tft.setTextColor(TFT_BLACK, TFT_GREEN);
     } else {
         tft.fillScreen(TFT_RED);
-        drawMainBorderWithTitle("FAILED");
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_BLACK);
+        tft.setTextColor(TFT_WHITE, TFT_RED);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("FAILED") * 12) / 2, 15);
+        tft.print("FAILED");
+        tft.setTextSize(1);
         tft.setTextColor(TFT_WHITE, TFT_RED);
     }
 
@@ -1402,9 +1444,13 @@ void showAttackResult(bool success, const char* message) {
 
 bool confirmAttack(const char* targetName) {
     tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle("CONFIRM ATTACK");
-
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen("CONFIRM ATTACK") * 12) / 2, 15);
+    tft.print("CONFIRM ATTACK");
+    tft.setTextSize(1);
+
     tft.setCursor(20, 60);
     tft.print("Target: ");
     tft.println(targetName);
@@ -1456,8 +1502,13 @@ String selectTargetFromScan(const char* title) {
     uint8_t selectedAddrType = BLE_ADDR_PUBLIC;
 
     tft.fillScreen(bruceConfig.bgColor);
-    drawMainBorderWithTitle(title);
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen(title) * 12) / 2, 15);
+    tft.print(title);
+    tft.setTextSize(1);
+    
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Initializing scanner...");
@@ -1512,8 +1563,10 @@ String selectTargetFromScan(const char* title) {
         if(!device) continue;
 
         ScanDevice dev;
-        dev.name = device->getName().c_str();
-        dev.address = device->getAddress().toString().c_str();
+        std::string nameStdStr = device->getName();
+        dev.name = String(nameStdStr.c_str());
+        std::string addrStdStr = device->getAddress().toString();
+        dev.address = String(addrStdStr.c_str());
         dev.addrType = device->getAddressType();
         dev.rssi = device->getRSSI();
         dev.fastPair = false;
@@ -1554,8 +1607,13 @@ String selectTargetFromScan(const char* title) {
 
     while(!exitLoop) {
         tft.fillScreen(bruceConfig.bgColor);
-        drawMainBorderWithTitle("SELECT DEVICE");
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
         tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("SELECT DEVICE") * 12) / 2, 15);
+        tft.print("SELECT DEVICE");
+        tft.setTextSize(1);
+        
         int yPos = 60;
 
         for(int i = 0; i < maxDevices; i++) {
@@ -1637,9 +1695,15 @@ NimBLEAddress parseAddress(const String& addressInfo) {
 }
 
 bool requireSimpleConfirmation(const char* message) {
-    drawMainBorderWithTitle("CONFIRM");
-    tft.fillRect(20, 50, tftWidth - 40, 100, bruceConfig.bgColor);
+    tft.fillScreen(bruceConfig.bgColor);
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
     tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen("CONFIRM") * 12) / 2, 15);
+    tft.print("CONFIRM");
+    tft.setTextSize(1);
+    
+    tft.fillRect(20, 50, tftWidth - 40, 100, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     String msgStr = message;
     if(msgStr.length() > 30) {
@@ -1674,7 +1738,13 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2
     if(strlen(btn3) > 0) buttonCount++;
     if(buttonCount == 0 && autoProgress) {
         tft.fillScreen(bruceConfig.bgColor);
-        drawMainBorderWithTitle("MESSAGE");
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("MESSAGE") * 12) / 2, 15);
+        tft.print("MESSAGE");
+        tft.setTextSize(1);
+        
         tft.setTextColor(color, bruceConfig.bgColor);
         tft.setCursor(20, 70);
         String lineStr = line1;
@@ -1694,7 +1764,13 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2
     }
     if(buttonCount == 0) {
         tft.fillScreen(bruceConfig.bgColor);
-        drawMainBorderWithTitle("MESSAGE");
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("MESSAGE") * 12) / 2, 15);
+        tft.print("MESSAGE");
+        tft.setTextSize(1);
+        
         tft.fillRect(20, 60, tftWidth - 40, 100, bruceConfig.bgColor);
         tft.setTextColor(color, bruceConfig.bgColor);
         tft.setCursor(20, 70);
@@ -1730,7 +1806,13 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2
             }
         }
         tft.fillScreen(bruceConfig.bgColor);
-        drawMainBorderWithTitle("MESSAGE");
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("MESSAGE") * 12) / 2, 15);
+        tft.print("MESSAGE");
+        tft.setTextSize(1);
+        
         tft.fillRect(20, 60, tftWidth - 40, 60, bruceConfig.bgColor);
         tft.setTextColor(color, bruceConfig.bgColor);
         tft.setCursor(20, 70);
@@ -1775,7 +1857,13 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2
     }
     else {
         tft.fillScreen(bruceConfig.bgColor);
-        drawMainBorderWithTitle("SELECT");
+        tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+        tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
+        tft.setTextSize(2);
+        tft.setCursor((tftWidth - strlen("SELECT") * 12) / 2, 15);
+        tft.print("SELECT");
+        tft.setTextSize(1);
+        
         tft.setTextColor(color, bruceConfig.bgColor);
         tft.setCursor(20, 70);
         tft.print(line1);
@@ -1835,7 +1923,13 @@ int8_t showAdaptiveMessage(const char* line1, const char* btn1, const char* btn2
 
 void showWarningMessage(const char* message) {
     tft.fillScreen(TFT_YELLOW);
-    drawMainBorderWithTitle("WARNING");
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_YELLOW);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen("WARNING") * 12) / 2, 15);
+    tft.print("WARNING");
+    tft.setTextSize(1);
+    
     tft.setTextColor(TFT_BLACK, TFT_YELLOW);
     tft.fillRect(20, 60, tftWidth - 40, 100, TFT_YELLOW);
     tft.setCursor(20, 70);
@@ -1864,7 +1958,13 @@ void showWarningMessage(const char* message) {
 
 void showErrorMessage(const char* message) {
     tft.fillScreen(TFT_RED);
-    drawMainBorderWithTitle("ERROR");
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_RED);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen("ERROR") * 12) / 2, 15);
+    tft.print("ERROR");
+    tft.setTextSize(1);
+    
     tft.setTextColor(TFT_WHITE, TFT_RED);
     tft.fillRect(20, 60, tftWidth - 40, 100, TFT_RED);
     tft.setCursor(20, 70);
@@ -1893,7 +1993,13 @@ void showErrorMessage(const char* message) {
 
 void showSuccessMessage(const char* message) {
     tft.fillScreen(TFT_GREEN);
-    drawMainBorderWithTitle("SUCCESS");
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_GREEN);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen("SUCCESS") * 12) / 2, 15);
+    tft.print("SUCCESS");
+    tft.setTextSize(1);
+    
     tft.setTextColor(TFT_BLACK, TFT_GREEN);
     tft.fillRect(20, 60, tftWidth - 40, 100, TFT_GREEN);
     tft.setCursor(20, 70);
@@ -1922,7 +2028,13 @@ void showSuccessMessage(const char* message) {
 
 void showDeviceInfoScreen(const char* title, const std::vector<String>& lines, uint16_t bgColor, uint16_t textColor) {
     tft.fillScreen(bgColor);
-    drawMainBorderWithTitle(title);
+    tft.drawRect(5, 5, tftWidth - 10, tftHeight - 10, TFT_WHITE);
+    tft.setTextColor(TFT_WHITE, bgColor);
+    tft.setTextSize(2);
+    tft.setCursor((tftWidth - strlen(title) * 12) / 2, 15);
+    tft.print(title);
+    tft.setTextSize(1);
+    
     tft.setTextColor(textColor, bgColor);
     int yPos = 60;
     int lineHeight = 20;
