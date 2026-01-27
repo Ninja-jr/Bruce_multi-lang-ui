@@ -6,18 +6,45 @@
 #include <WString.h>
 #include <vector>
 
+#ifndef TFT_WHITE
 #define TFT_WHITE 0xFFFF
+#endif
+
+#ifndef TFT_BLACK
 #define TFT_BLACK 0x0000
+#endif
+
+#ifndef TFT_RED
 #define TFT_RED 0xF800
+#endif
+
+#ifndef TFT_GREEN
 #define TFT_GREEN 0x07E0
+#endif
+
+#ifndef TFT_BLUE
 #define TFT_BLUE 0x001F
+#endif
+
+#ifndef TFT_YELLOW
 #define TFT_YELLOW 0xFFE0
+#endif
+
+#ifndef TFT_CYAN
 #define TFT_CYAN 0x07FF
+#endif
+
+#ifndef TFT_MAGENTA
 #define TFT_MAGENTA 0xF81F
+#endif
+
+#ifndef TFT_ORANGE
 #define TFT_ORANGE 0xFDA0
+#endif
+
+#ifndef TFT_GRAY
 #define TFT_GRAY 0x8410
-#define TFT_DARKGREY 0x4208
-#define TFT_DARKGREEN 0x0320
+#endif
 
 class BLEAttackManager {
 private:
@@ -83,7 +110,7 @@ void runProtocolFuzzer(NimBLEAddress target);
 void runJamConnectAttack(NimBLEAddress target);
 void runHIDTest(NimBLEAddress target);
 void runAudioControlTest(NimBLEAddress target);
-void runAudioHijackTest();
+void audioCommandHijackTest();
 void executeAudioTest(int testIndex, NimBLEAddress target);
 void showAttackProgress(const char* message, uint16_t color = TFT_WHITE);
 void showAttackResult(bool success, const char* message = nullptr);
