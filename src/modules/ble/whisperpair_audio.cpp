@@ -2,7 +2,11 @@
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include <globals.h>
-#include "whisperpair.h"
+
+extern GlobalState globalState;
+extern BruceConfig bruceConfig;
+extern tft_logger tft;
+extern volatile int tftWidth, tftHeight;
 
 AudioCommandService::AudioCommandService() : pServer(nullptr), pAudioService(nullptr), pCmdCharacteristic(nullptr), isConnected(false) {}
 
@@ -62,11 +66,13 @@ void audioCommandHijackTest() {
     tft.print("SEL: Start  ESC: Back");
 
     while(true) {
-        if(check(EscPress) || check(SelPress)) return;
+        if(check(EscPress) || check(SelPress)) break;
         delay(50);
     }
 
-    showAdaptiveMessage("Starting audio service...", "", "", "", TFT_WHITE, false, true);
+    if(check(EscPress)) return;
+
+    showAdaptiveMessage("Starting audio service...", "", "", "", 0xFFFF, false, true);
     AudioCommandService audioCmd;
     audioCmd.start();
 
@@ -93,7 +99,7 @@ void audioCommandHijackTest() {
     while(millis() - startTime < 30000) {
         if(check(EscPress)) {
             audioCmd.stop();
-            showAdaptiveMessage("Service stopped", "OK", "", "", TFT_WHITE, true, false);
+            showAdaptiveMessage("Service stopped", "OK", "", "", 0xFFFF, true, false);
             return;
         }
 
@@ -101,17 +107,17 @@ void audioCommandHijackTest() {
             if(audioCmd.isDeviceConnected()) {
                 uint8_t volume_up[] = {0x01, 0x00, 0x00, 0x00};
                 audioCmd.injectCommand(volume_up, 4);
-                showAdaptiveMessage("Volume up sent!", "", "", "", TFT_GREEN, false, true);
+                showAdaptiveMessage("Volume up sent!", "", "", "", 0x07E0, false, true);
                 delay(500);
 
                 uint8_t play_pause[] = {0x02, 0x00, 0x00, 0x00};
                 audioCmd.injectCommand(play_pause, 4);
-                showAdaptiveMessage("Play/Pause sent!", "", "", "", TFT_GREEN, false, true);
+                showAdaptiveMessage("Play/Pause sent!", "", "", "", 0x07E0, false, true);
                 delay(500);
 
                 uint8_t next_track[] = {0x03, 0x00, 0x00, 0x00};
                 audioCmd.injectCommand(next_track, 4);
-                showAdaptiveMessage("Next track sent!", "", "", "", TFT_GREEN, false, true);
+                showAdaptiveMessage("Next track sent!", "", "", "", 0x07E0, false, true);
                 delay(500);
             } else {
                 showErrorMessage("No device connected!");
@@ -122,5 +128,5 @@ void audioCommandHijackTest() {
     }
 
     audioCmd.stop();
-    showAdaptiveMessage("Timeout - service stopped", "OK", "", "", TFT_WHITE, true, false);
+    showAdaptiveMessage("Timeout - service stopped", "OK", "", "", 0xFFFF, true, false);
 }
