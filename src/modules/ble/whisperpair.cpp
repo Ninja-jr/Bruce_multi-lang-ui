@@ -1540,6 +1540,9 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 60);
     tft.print("Scanning for devices...");
 
+    tft.setCursor(20, 100);
+    tft.print("Please wait 15 seconds...");
+
     bool wasInitialized = isBLEInitialized();
     if(wasInitialized) {
         if(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning()) {
@@ -1601,25 +1604,26 @@ String selectTargetFromScan(const char* title) {
     static ScanCallback scanCallback;
     pBLEScan->setScanCallbacks(&scanCallback, false);
 
-    tft.setCursor(20, 100);
-    tft.print("Found: 0 devices");
-
     unsigned long scanStart = millis();
-    bool scanStarted = pBLEScan->start(15, false);
     
-    if(scanStarted) {
-        while(pBLEScan->isScanning() && millis() - scanStart < 16000) {
-            delay(100);
-            
-            if(check(EscPress)) {
-                pBLEScan->stop();
-                break;
-            }
+    bool scanStarted = pBLEScan->start(15, true);
+    
+    if(!scanStarted) {
+        showErrorMessage("Failed to start scan");
+        pBLEScan->clearResults();
+        NimBLEDevice::deinit(true);
+        return "";
+    }
+
+    while(millis() - scanStart < 16000) {
+        if(check(EscPress)) {
+            pBLEScan->stop();
+            break;
         }
-        
-        pBLEScan->stop();
+        delay(100);
     }
     
+    pBLEScan->stop();
     delay(200);
     
     pBLEScan->clearResults();
