@@ -1538,7 +1538,7 @@ String selectTargetFromScan(const char* title) {
     
     tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
     tft.setCursor(20, 60);
-    tft.print("Phase 1/2: Quick scan...");
+    tft.print("Scanning for devices...");
 
     bool wasInitialized = isBLEInitialized();
     if(wasInitialized) {
@@ -1564,22 +1564,26 @@ String selectTargetFromScan(const char* title) {
 
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(70);
-    pBLEScan->setWindow(35);
-    pBLEScan->setDuplicateFilter(false);
+    pBLEScan->setInterval(97);
+    pBLEScan->setWindow(37);
+    pBLEScan->setDuplicateFilter(true);
     pBLEScan->setMaxResults(0);
 
     class ScanCallback : public NimBLEScanCallbacks {
         void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
-            String name = String(advertisedDevice->getName().c_str());
-            String address = String(advertisedDevice->getAddress().toString().c_str());
-            int rssi = advertisedDevice->getRSSI();
+            if(!advertisedDevice) return;
             
+            String address = String(advertisedDevice->getAddress().toString().c_str());
+            if(address.isEmpty()) return;
+            
+            String name = String(advertisedDevice->getName().c_str());
             if(name.isEmpty() || name == "(null)") {
                 name = "Unknown";
             }
             
+            int rssi = advertisedDevice->getRSSI();
             bool fastPair = false;
+            
             if(advertisedDevice->haveManufacturerData()) {
                 std::string mfg = advertisedDevice->getManufacturerData();
                 if(mfg.length() >= 2) {
@@ -1600,79 +1604,39 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 100);
     tft.print("Found: 0 devices");
 
-    unsigned long phase1Start = millis();
-    pBLEScan->start(5, false);
-    
-    while(millis() - phase1Start < 6000) {
-        if(check(EscPress)) {
-            pBLEScan->stop();
-            break;
-        }
-        delay(50);
-    }
-
-    pBLEScan->stop();
-    delay(100);
-    
-    size_t phase1Count = scannerData.size();
-    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
-    tft.setCursor(20, 60);
-    tft.print("Phase 2/2: Deep scan...");
-    tft.setCursor(20, 100);
-    tft.print("Found: ");
-    tft.print(phase1Count);
-    tft.print(" devices");
-
-    pBLEScan->setScanCallbacks(nullptr, false);
-    pBLEScan->clearResults();
-
-    unsigned long phase2Start = millis();
-    bool scanStarted = pBLEScan->start(10, true);
+    unsigned long scanStart = millis();
+    bool scanStarted = pBLEScan->start(15, false);
     
     if(scanStarted) {
-        while(pBLEScan->isScanning() && millis() - phase2Start < 11000) {
+        while(pBLEScan->isScanning() && millis() - scanStart < 16000) {
             delay(100);
+            
             if(check(EscPress)) {
                 pBLEScan->stop();
                 break;
             }
         }
+        
+        pBLEScan->stop();
     }
     
-    NimBLEScanResults blockingResults = pBLEScan->getResults();
+    delay(200);
     
-    for(int i = 0; i < blockingResults.getCount(); i++) {
-        const NimBLEAdvertisedDevice* device = blockingResults.getDevice(i);
-        if(!device) continue;
-        
-        String name = String(device->getName().c_str());
-        String address = String(device->getAddress().toString().c_str());
-        int rssi = device->getRSSI();
-        
-        if(name.isEmpty() || name == "(null)") {
-            name = "Unknown";
-        }
-        
-        bool fastPair = false;
-        if(device->haveManufacturerData()) {
-            std::string mfg = device->getManufacturerData();
-            if(mfg.length() >= 2) {
-                uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
-                if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
-                    fastPair = true;
-                }
-            }
-        }
-        
-        scannerData.addDevice(name, address, rssi, fastPair);
-    }
-
-    pBLEScan->stop();
     pBLEScan->clearResults();
     NimBLEDevice::deinit(true);
     delay(300);
 
     size_t deviceCount = scannerData.size();
+    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
+    tft.setCursor(20, 60);
+    tft.print("Scan complete!");
+    tft.setCursor(20, 100);
+    tft.print("Found: ");
+    tft.print(deviceCount);
+    tft.print(" devices");
+    
+    delay(1000);
+
     if(deviceCount == 0) {
         showWarningMessage("NO DEVICES FOUND");
         delay(1500);
@@ -1686,17 +1650,13 @@ String selectTargetFromScan(const char* title) {
                     std::swap(scannerData.deviceNames[i], scannerData.deviceNames[j]);
                     std::swap(scannerData.deviceAddresses[i], scannerData.deviceAddresses[j]);
                     std::swap(scannerData.deviceRssi[i], scannerData.deviceRssi[j]);
-                    bool temp = scannerData.deviceFastPair[i];
-                    scannerData.deviceFastPair[i] = scannerData.deviceFastPair[j];
-                    scannerData.deviceFastPair[j] = temp;
+                    std::swap(scannerData.deviceFastPair[i], scannerData.deviceFastPair[j]);
                 } else if(scannerData.deviceFastPair[j] == scannerData.deviceFastPair[i] && 
                           scannerData.deviceRssi[j] > scannerData.deviceRssi[i]) {
                     std::swap(scannerData.deviceNames[i], scannerData.deviceNames[j]);
                     std::swap(scannerData.deviceAddresses[i], scannerData.deviceAddresses[j]);
                     std::swap(scannerData.deviceRssi[i], scannerData.deviceRssi[j]);
-                    bool temp = scannerData.deviceFastPair[i];
-                    scannerData.deviceFastPair[i] = scannerData.deviceFastPair[j];
-                    scannerData.deviceFastPair[j] = temp;
+                    std::swap(scannerData.deviceFastPair[i], scannerData.deviceFastPair[j]);
                 }
             }
         }
@@ -1764,7 +1724,6 @@ String selectTargetFromScan(const char* title) {
         tft.setCursor(20, tftHeight - 35);
         tft.print("SEL: Connect  PREV/NEXT: Select  ESC: Back");
 
-        unsigned long inputWaitStart = millis();
         bool gotInput = false;
 
         while(!gotInput) {
