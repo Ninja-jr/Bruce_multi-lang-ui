@@ -228,7 +228,7 @@ bool WhisperPairExploit::testForVulnerability(NimBLERemoteCharacteristic* kbpCha
                 return true;
             }
         }
-    catch(...) {
+    } catch(...) {
         return true;
     }
 
