@@ -1711,58 +1711,117 @@ String selectTargetFromScan(const char* title) {
         return "";
     }
 
-    pBLEScan->clearResults();
-    pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(100);
-    pBLEScan->setWindow(99);
-    pBLEScan->setDuplicateFilter(false);
-    pBLEScan->setMaxResults(0);
+    struct ScanStrategy {
+        const char* name;
+        bool active;
+        uint32_t interval;
+        uint32_t window;
+        bool duplicates;
+        int duration;
+    };
+    
+    ScanStrategy strategies[] = {
+        {"Fast Aggressive", true, 80, 60, false, 8},
+        {"Standard BLE", true, 100, 50, true, 10},
+        {"Passive", false, 200, 100, false, 12},
+        {"High Speed", true, 60, 40, false, 6},
+        {"Long Window", true, 150, 120, true, 15}
+    };
+    
+    int totalDevicesFound = 0;
+    
+    for(int strategyIdx = 0; strategyIdx < 5; strategyIdx++) {
+        ScanStrategy& strategy = strategies[strategyIdx];
+        
+        tft.fillRect(20, 80, tftWidth - 40, 60, bruceConfig.bgColor);
+        tft.setCursor(20, 80);
+        tft.print("Strategy ");
+        tft.print(strategyIdx + 1);
+        tft.print("/5: ");
+        tft.print(strategy.name);
+        
+        tft.setCursor(20, 100);
+        tft.print("Scanning ");
+        tft.print(strategy.duration);
+        tft.print(" sec...");
+        
+        pBLEScan->clearResults();
+        pBLEScan->setActiveScan(strategy.active);
+        pBLEScan->setInterval(strategy.interval);
+        pBLEScan->setWindow(strategy.window);
+        pBLEScan->setDuplicateFilter(strategy.duplicates);
+        pBLEScan->setMaxResults(0);
 
-    class ScanCallback : public NimBLEScanCallbacks {
-        void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
-            if(!advertisedDevice) return;
-            
-            String address = String(advertisedDevice->getAddress().toString().c_str());
-            if(address.isEmpty()) return;
-            
-            String name = String(advertisedDevice->getName().c_str());
-            if(name.isEmpty() || name == "(null)") {
-                name = "Unknown";
-            }
-            
-            int rssi = advertisedDevice->getRSSI();
-            bool fastPair = false;
-            
-            if(advertisedDevice->haveManufacturerData()) {
-                std::string mfg = advertisedDevice->getManufacturerData();
-                if(mfg.length() >= 2) {
-                    uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
-                    if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
-                        fastPair = true;
+        class ScanCallback : public NimBLEScanCallbacks {
+        public:
+            void onResult(NimBLEAdvertisedDevice* advertisedDevice) {
+                if(!advertisedDevice) return;
+                
+                String address = String(advertisedDevice->getAddress().toString().c_str());
+                if(address.isEmpty()) return;
+                
+                String name = String(advertisedDevice->getName().c_str());
+                if(name.isEmpty() || name == "(null)" || name == "null") {
+                    name = "Unknown";
+                }
+                
+                int rssi = advertisedDevice->getRSSI();
+                bool fastPair = false;
+                
+                if(advertisedDevice->haveManufacturerData()) {
+                    std::string mfg = advertisedDevice->getManufacturerData();
+                    if(mfg.length() >= 2) {
+                        uint16_t mfg_id = (mfg[1] << 8) | mfg[0];
+                        if(mfg_id == 0x00E0 || mfg_id == 0x2C00) {
+                            fastPair = true;
+                        }
                     }
                 }
+                
+                scannerData.addDevice(name, address, rssi, fastPair);
             }
-            
-            scannerData.addDevice(name, address, rssi, fastPair);
+        };
+
+        static ScanCallback scanCallback;
+        pBLEScan->setScanCallbacks(&scanCallback, true);
+
+        unsigned long scanStart = millis();
+        pBLEScan->start(strategy.duration, false);
+        
+        while(millis() - scanStart < (strategy.duration * 1000 + 1000)) {
+            if(check(EscPress)) {
+                pBLEScan->stop();
+                break;
+            }
+            delay(100);
         }
-    };
-
-    static ScanCallback scanCallback;
-    pBLEScan->setScanCallbacks(&scanCallback, true);
-
-    unsigned long scanStart = millis();
-    pBLEScan->start(15, false);
-    
-    while(millis() - scanStart < 16000) {
-        if(check(EscPress)) {
-            pBLEScan->stop();
+        
+        pBLEScan->stop();
+        delay(200);
+        
+        size_t devicesThisScan = scannerData.size();
+        if(devicesThisScan > totalDevicesFound) {
+            totalDevicesFound = devicesThisScan;
+        }
+        
+        tft.fillRect(20, 120, tftWidth - 40, 20, bruceConfig.bgColor);
+        tft.setCursor(20, 120);
+        tft.print("Found: ");
+        tft.print(devicesThisScan);
+        tft.print(" (Total: ");
+        tft.print(totalDevicesFound);
+        tft.print(")");
+        
+        delay(500);
+        
+        if(totalDevicesFound >= 10) {
             break;
         }
-        delay(100);
+        
+        if(check(EscPress)) {
+            break;
+        }
     }
-    
-    pBLEScan->stop();
-    delay(200);
     
     pBLEScan->clearResults();
     pBLEScan->setScanCallbacks(nullptr, true);
@@ -1770,11 +1829,11 @@ String selectTargetFromScan(const char* title) {
     delay(300);
 
     size_t deviceCount = scannerData.size();
-    tft.fillRect(20, 60, tftWidth - 40, 40, bruceConfig.bgColor);
+    tft.fillRect(20, 60, tftWidth - 40, 80, bruceConfig.bgColor);
     tft.setCursor(20, 60);
     tft.print("Scan complete!");
-    tft.setCursor(20, 100);
-    tft.print("Found: ");
+    tft.setCursor(20, 90);
+    tft.print("Total found: ");
     tft.print(deviceCount);
     tft.print(" devices");
     
