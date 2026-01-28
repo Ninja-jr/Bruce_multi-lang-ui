@@ -1627,10 +1627,22 @@ String selectTargetFromScan(const char* title) {
     pBLEScan->clearResults();
 
     unsigned long phase2Start = millis();
-    NimBLEScanResults blockingResults = pBLEScan->start(10, true);
+    bool scanStarted = pBLEScan->start(10, true);
+    
+    if(scanStarted) {
+        while(pBLEScan->isScanning() && millis() - phase2Start < 11000) {
+            delay(100);
+            if(check(EscPress)) {
+                pBLEScan->stop();
+                break;
+            }
+        }
+    }
+    
+    NimBLEScanResults blockingResults = pBLEScan->getResults();
     
     for(int i = 0; i < blockingResults.getCount(); i++) {
-        NimBLEAdvertisedDevice* device = blockingResults.getDevice(i);
+        const NimBLEAdvertisedDevice* device = blockingResults.getDevice(i);
         if(!device) continue;
         
         String name = String(device->getName().c_str());
@@ -1674,13 +1686,17 @@ String selectTargetFromScan(const char* title) {
                     std::swap(scannerData.deviceNames[i], scannerData.deviceNames[j]);
                     std::swap(scannerData.deviceAddresses[i], scannerData.deviceAddresses[j]);
                     std::swap(scannerData.deviceRssi[i], scannerData.deviceRssi[j]);
-                    std::swap(scannerData.deviceFastPair[i], scannerData.deviceFastPair[j]);
+                    bool temp = scannerData.deviceFastPair[i];
+                    scannerData.deviceFastPair[i] = scannerData.deviceFastPair[j];
+                    scannerData.deviceFastPair[j] = temp;
                 } else if(scannerData.deviceFastPair[j] == scannerData.deviceFastPair[i] && 
                           scannerData.deviceRssi[j] > scannerData.deviceRssi[i]) {
                     std::swap(scannerData.deviceNames[i], scannerData.deviceNames[j]);
                     std::swap(scannerData.deviceAddresses[i], scannerData.deviceAddresses[j]);
                     std::swap(scannerData.deviceRssi[i], scannerData.deviceRssi[j]);
-                    std::swap(scannerData.deviceFastPair[i], scannerData.deviceFastPair[j]);
+                    bool temp = scannerData.deviceFastPair[i];
+                    scannerData.deviceFastPair[i] = scannerData.deviceFastPair[j];
+                    scannerData.deviceFastPair[j] = temp;
                 }
             }
         }
