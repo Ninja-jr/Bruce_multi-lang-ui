@@ -54,7 +54,7 @@ private:
 public:
     void prepareForConnection();
     void cleanupAfterAttack();
-    bool connectToDevice(NimBLEAddress target, NimBLEClient** outClient);
+    bool connectToDevice(NimBLEAddress target, NimBLEClient** outClient, bool useExploitHandshake = false);
 };
 
 class WhisperPairExploit {
