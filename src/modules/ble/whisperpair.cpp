@@ -1720,7 +1720,6 @@ String selectTargetFromScan(const char* title) {
             }
             
             int rssi = advertisedDevice->getRSSI();
-            if(rssi < -80) return;
             
             bool fastPair = false;
             
@@ -1743,28 +1742,21 @@ String selectTargetFromScan(const char* title) {
                    nameUpper.indexOf("BUDS") != -1) {
                     fastPair = true;
                 }
-                
-                String addressUpper = address;
-                addressUpper.toUpperCase();
-                if(addressUpper.indexOf("3C:5A:B4") == 0 ||
-                   addressUpper.indexOf("D4:3B:04") == 0) {
-                    fastPair = true;
-                }
             }
             
             scannerData.addDevice(name, address, rssi, fastPair);
         }
     };
 
-    static SimpleScanCallback scanCallback;
+    SimpleScanCallback* scanCallback = new SimpleScanCallback();
     
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(100);
-    pBLEScan->setWindow(50);
-    pBLEScan->setDuplicateFilter(true);
-    pBLEScan->setMaxResults(10);
-    pBLEScan->setScanCallbacks(&scanCallback, true);
+    pBLEScan->setInterval(97);
+    pBLEScan->setWindow(37);
+    pBLEScan->setDuplicateFilter(false);
+    pBLEScan->setMaxResults(0);
+    pBLEScan->setScanCallbacks(scanCallback);
 
     unsigned long scanStart = millis();
     unsigned long scanDuration = 10000;
@@ -1779,10 +1771,12 @@ String selectTargetFromScan(const char* title) {
         tft.print("Scan start failed");
         delay(1000);
         NimBLEDevice::deinit(true);
+        delete scanCallback;
         return "";
     }
     
     int lastDevices = 0;
+    int spinner = 0;
     while(millis() - scanStart < scanDuration + 500) {
         if(check(EscPress)) {
             pBLEScan->stop();
@@ -1791,7 +1785,7 @@ String selectTargetFromScan(const char* title) {
         
         size_t currentDevices = scannerData.size();
         if(currentDevices != lastDevices) {
-            tft.fillRect(20, 120, tftWidth - 40, 20, bruceConfig.bgColor);
+            tft.fillRect(20, 120, tftWidth - 40, 40, bruceConfig.bgColor);
             tft.setCursor(20, 120);
             tft.print("Found: ");
             tft.print(currentDevices);
@@ -1799,16 +1793,24 @@ String selectTargetFromScan(const char* title) {
             lastDevices = currentDevices;
         }
         
-        delay(100);
+        tft.fillRect(tftWidth - 40, 100, 30, 20, bruceConfig.bgColor);
+        tft.setCursor(tftWidth - 40, 100);
+        const char* spinnerChars = "|/-\\";
+        tft.print(spinnerChars[spinner % 4]);
+        spinner++;
+        
+        delay(200);
     }
     
     pBLEScan->stop();
     delay(200);
     
     pBLEScan->clearResults();
-    pBLEScan->setScanCallbacks(nullptr, true);
+    pBLEScan->setScanCallbacks(nullptr);
     NimBLEDevice::deinit(true);
     delay(300);
+    
+    delete scanCallback;
 
     size_t deviceCount = scannerData.size();
     
