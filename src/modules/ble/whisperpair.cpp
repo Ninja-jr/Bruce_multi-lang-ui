@@ -1650,13 +1650,17 @@ String selectTargetFromScan(const char* title) {
                     std::swap(scannerData.deviceNames[i], scannerData.deviceNames[j]);
                     std::swap(scannerData.deviceAddresses[i], scannerData.deviceAddresses[j]);
                     std::swap(scannerData.deviceRssi[i], scannerData.deviceRssi[j]);
-                    std::swap(scannerData.deviceFastPair[i], scannerData.deviceFastPair[j]);
+                    bool tempFastPair = scannerData.deviceFastPair[i];
+                    scannerData.deviceFastPair[i] = scannerData.deviceFastPair[j];
+                    scannerData.deviceFastPair[j] = tempFastPair;
                 } else if(scannerData.deviceFastPair[j] == scannerData.deviceFastPair[i] && 
                           scannerData.deviceRssi[j] > scannerData.deviceRssi[i]) {
                     std::swap(scannerData.deviceNames[i], scannerData.deviceNames[j]);
                     std::swap(scannerData.deviceAddresses[i], scannerData.deviceAddresses[j]);
                     std::swap(scannerData.deviceRssi[i], scannerData.deviceRssi[j]);
-                    std::swap(scannerData.deviceFastPair[i], scannerData.deviceFastPair[j]);
+                    bool tempFastPair = scannerData.deviceFastPair[i];
+                    scannerData.deviceFastPair[i] = scannerData.deviceFastPair[j];
+                    scannerData.deviceFastPair[j] = tempFastPair;
                 }
             }
         }
