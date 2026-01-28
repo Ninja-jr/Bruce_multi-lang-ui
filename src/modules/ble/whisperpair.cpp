@@ -1695,7 +1695,7 @@ String selectTargetFromScan(const char* title) {
     }
 
     NimBLEDevice::init("Bruce-Scanner");
-    NimBLEDevice::setPower(ESP_PWR_LVL_P7);
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::setSecurityAuth(false, false, false);
     delay(300);
 
