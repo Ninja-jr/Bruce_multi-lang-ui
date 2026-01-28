@@ -228,7 +228,7 @@ bool WhisperPairExploit::testForVulnerability(NimBLERemoteCharacteristic* kbpCha
                 return true;
             }
         }
-    } catch(...) {
+    catch(...) {
         return true;
     }
 
@@ -1540,9 +1540,6 @@ String selectTargetFromScan(const char* title) {
     tft.setCursor(20, 60);
     tft.print("Scanning for devices...");
 
-    tft.setCursor(20, 100);
-    tft.print("Please wait 15 seconds...");
-
     bool wasInitialized = isBLEInitialized();
     if(wasInitialized) {
         if(NimBLEDevice::getScan() && NimBLEDevice::getScan()->isScanning()) {
@@ -1567,9 +1564,9 @@ String selectTargetFromScan(const char* title) {
 
     pBLEScan->clearResults();
     pBLEScan->setActiveScan(true);
-    pBLEScan->setInterval(97);
-    pBLEScan->setWindow(37);
-    pBLEScan->setDuplicateFilter(true);
+    pBLEScan->setInterval(100);
+    pBLEScan->setWindow(99);
+    pBLEScan->setDuplicateFilter(false);
     pBLEScan->setMaxResults(0);
 
     class ScanCallback : public NimBLEScanCallbacks {
@@ -1602,19 +1599,11 @@ String selectTargetFromScan(const char* title) {
     };
 
     static ScanCallback scanCallback;
-    pBLEScan->setScanCallbacks(&scanCallback, false);
+    pBLEScan->setScanCallbacks(&scanCallback, true);
 
     unsigned long scanStart = millis();
+    pBLEScan->start(15, false);
     
-    bool scanStarted = pBLEScan->start(15, true);
-    
-    if(!scanStarted) {
-        showErrorMessage("Failed to start scan");
-        pBLEScan->clearResults();
-        NimBLEDevice::deinit(true);
-        return "";
-    }
-
     while(millis() - scanStart < 16000) {
         if(check(EscPress)) {
             pBLEScan->stop();
@@ -1627,6 +1616,7 @@ String selectTargetFromScan(const char* title) {
     delay(200);
     
     pBLEScan->clearResults();
+    pBLEScan->setScanCallbacks(nullptr, true);
     NimBLEDevice::deinit(true);
     delay(300);
 
